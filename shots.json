@@ -1,5 +1,26 @@
 [
-  { "file": "1-checklist.jpg", "path": "/", "viewport": { "width": 1280, "height": 800 } },
-  { "file": "2-silver.jpg", "path": "/", "grade": "silver", "viewport": { "width": 1280, "height": 800 } },
-  { "file": "3-bronze.jpg", "path": "/", "grade": "bronze", "scroll": 1400, "viewport": { "width": 1280, "height": 800 } }
+  {
+    "file": "1-cover.jpg",
+    "description": "Tracker with Positive Mental Attitude (id 28) expanded at the top with its guide and Sources footer in frame",
+    "viewport": { "width": 1280, "height": 800 },
+    "hash": "#filter=collectibles&open=28&seed=2,3,4,5,8,9,15,17,22,30,33,52"
+  },
+  {
+    "file": "2-roadmap.jpg",
+    "description": "Roadmap stage view",
+    "viewport": { "width": 1280, "height": 800 },
+    "hash": "#tab=roadmap&seed=2,3,4,5,8,9,15,17,22,30,33,52"
+  },
+  {
+    "file": "3-missables.jpg",
+    "description": "Missables view with Chapter-1 meditation warning",
+    "viewport": { "width": 1280, "height": 800 },
+    "hash": "#tab=missables&seed=2,3,4,5,8,9,15,17,22,30,33,52"
+  },
+  {
+    "file": "4-guide.jpg",
+    "description": "Activities filter with Cunning Stunts (id 15) expanded at the top with its guide and Sources footer in frame",
+    "viewport": { "width": 1280, "height": 800 },
+    "hash": "#filter=activities&open=15&seed=2,3,4,5,8,9,15,17,22,30,33,52"
+  }
 ]
