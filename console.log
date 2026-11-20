@@ -1,8 +1,0 @@
-[2979591:2979591:1119/140657.638217:WARNING:chrome_main_delegate.cc(672)] This is Chrome version 131.0.6778.33 (not a warning)
-[2979591:2979591:1119/140657.919429:WARNING:account_consistency_mode_manager.cc(77)] Desktop Identity Consistency cannot be enabled as no OAuth client ID and client secret have been configured.
-[2979619:2979619:1119/140658.175953:WARNING:sandbox_linux.cc(430)] InitializeSandbox() called with multiple threads in process gpu-process.
-[2979619:2979619:1119/140658.181102:WARNING:viz_main_impl.cc(85)] VizNullHypothesis is disabled (not a warning)
-[2979591:2979675:1119/140658.299264:ERROR:object_proxy.cc(576)] Failed to call method: org.freedesktop.DBus.Properties.Get: object_path= /org/freedesktop/UPower: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.UPower was not provided by any .service files
-[2979591:2979675:1119/140658.299781:WARNING:property.cc(149)] DaemonVersion: GetAndBlock: failed.
-[2979591:2979675:1119/140658.300488:ERROR:object_proxy.cc(576)] Failed to call method: org.freedesktop.UPower.GetDisplayDevice: object_path= /org/freedesktop/UPower: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.UPower was not provided by any .service files
-[2979591:2979675:1119/140658.301101:ERROR:object_proxy.cc(576)] Failed to call method: org.freedesktop.UPower.EnumerateDevices: object_path= /org/freedesktop/UPower: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.UPower was not provided by any .service files
