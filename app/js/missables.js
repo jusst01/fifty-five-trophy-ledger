@@ -1,79 +1,121 @@
-/* app/js/missables.js — Missables and Cautions Tab Rendering */
+/* app/js/missables.js — Missables, Cautions, and Unknowns Tab Rendering (v2) */
 
 window.MissablesRenderer = {
   render: function(containerEl, trophies, earnedMap, onJumpToTrophy) {
     if (!containerEl) return;
 
-    const pma = trophies.find(t => t.id === 28) || {
-      id: 28,
-      name: "Positive Mental Attitude",
-      grade: "bronze",
-      kind: "collectibles",
-      stage: 3,
-      description: "Complete all meditation spots.",
-      guide: "What it takes — Visiting and completing all meditation spots across Leonida, including the Chapter 1 exclusive spot at Jason's house (PowerPyx).\n\nWhere and when — Chapter 1 is your sole opportunity for Jason's house meditation spot before story progression locks the area permanently (GTABase).\n\nSteps — 1) During Chapter 1 at Jason's house, interact with the meditation spot before concluding the act (PowerPyx). 2) Complete remaining meditation locations across Leonida in later stages (GTABase). 3) Secure the trophy upon finishing the final spot (Exophase).",
-      sources: ["PowerPyx — GTA 6 Trophy Guide and Roadmap", "GTABase — GTA VI Trophy Guide"]
-    };
+    const pma = trophies.find(t => t.id === 28) || {};
+    const asl = trophies.find(t => t.id === 48) || {};
+    const unknowns = trophies.filter(t => t.flag === 'unknown');
 
-    const asl = trophies.find(t => t.id === 48) || {
-      id: 48,
-      name: "Actions Speak Louder",
-      grade: "bronze",
-      kind: "story",
-      stage: 1,
-      description: "Attain a permanent Irredeemable Criminal Profile.",
-      guide: "What it takes — Accumulating notoriety sufficient to lock in a permanent Irredeemable Criminal Profile across your save file (GTABase).\n\nWhere and when — Unlocks naturally during criminal enterprise progression in early chapters (PowerPyx).\n\nSteps — 1) Engage in high-level heists and prolonged police standoffs (PowerPyx). 2) Push criminal stats into the maximum threshold (GTABase). 3) Verify permanent profile status in player statistics (PSNProfiles).",
-      sources: ["PowerPyx — GTA 6 Trophy Guide and Roadmap", "GTABase — GTA VI Trophy Guide"]
-    };
-
-    const pmaEarned = window.StorageManager.isEarned(pma.id, earnedMap);
-    const aslEarned = window.StorageManager.isEarned(asl.id, earnedMap);
-
-    containerEl.innerHTML = `
-      <div class="missables-footer-note" style="margin-bottom: 1.5rem;">
-        <strong>Official Scope Note:</strong> Of the 55 trophies in Grand Theft Auto VI, exactly <strong>two</strong> carry explicit flags: <strong>Positive Mental Attitude</strong> (Missable in Chapter 1) and <strong>Actions Speak Louder</strong> (Permanent caution for Irredeemable Criminal Profile). These flags and windows are sourced directly from <strong>PowerPyx</strong> and <strong>GTABase</strong>.
+    let pmaStepsHTML = (pma.steps || []).map((s, i) => `
+      <div style="margin-bottom: 0.5rem; font-size: 0.9rem;">
+        <strong>Step ${i+1}:</strong> ${escapeHTML(s.text)} ${(s.cites || []).map(c => `<span class="citation-chip">[${c}]</span>`).join('')}
       </div>
+    `).join('');
 
-      <!-- Positive Mental Attitude Card -->
-      <div class="missable-card">
-        <div class="missable-header-tag missable">⚠️ Strictly Missable Trophy</div>
-        <div class="stage-title-row">
-          <h3 class="missable-title">#${pma.id}: ${escapeHTML(pma.name)} <span class="badge-${pma.grade}" style="font-size: 11px; padding: 0.15rem 0.4rem;">${pma.grade}</span></h3>
-          <button class="btn btn-secondary" data-jump-id="${pma.id}">View in Tracker →</button>
-        </div>
-        <p><strong>Description:</strong> ${escapeHTML(pma.description)}</p>
-        <div class="missable-body" style="margin-top: 1rem;">
-          <h4 style="color: var(--amber); margin-bottom: 0.3rem;">Miss Window &amp; Critical Warning</h4>
-          <p><strong>Chapter 1 Window:</strong> You must meditate at Jason's house during Chapter 1. Once Chapter 1 concludes and you progress to later chapters, this specific meditation location becomes permanently inaccessible. Missing it locks you out of this trophy until a new playthrough (PowerPyx / GTABase).</p>
-          <h4 style="color: var(--text-main); margin-top: 1rem; margin-bottom: 0.3rem;">Guide &amp; Steps</h4>
-          <p>${escapeHTML(pma.guide)}</p>
-        </div>
-        <div class="sources-footer">
-          <strong>Sources:</strong>
-          <div class="sources-list">
-            ${(pma.sources || []).map(s => `<span class="source-pill">${escapeHTML(s)}</span>`).join('')}
+    let aslStepsHTML = (asl.steps || []).map((s, i) => `
+      <div style="margin-bottom: 0.5rem; font-size: 0.9rem;">
+        <strong>Step ${i+1}:</strong> ${escapeHTML(s.text)} ${(s.cites || []).map(c => `<span class="citation-chip">[${c}]</span>`).join('')}
+      </div>
+    `).join('');
+
+    let unknownsHTML = unknowns.map(t => {
+      const isEarned = window.StorageManager.isEarned(t.id, earnedMap);
+      const title = window.SpoilerManager.getDisplayTitle(t, earnedMap);
+      return `
+        <div class="unknown-card" style="background: var(--surface-color); border: 1px solid var(--surface-secondary); border-radius: var(--border-radius-lg); padding: 1rem; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <span class="badge-${t.grade}" style="font-size: 10px; padding: 0.15rem 0.4rem; border-radius: 3px; font-weight: bold; text-transform: uppercase;">${t.grade}</span>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">Stage ${t.stage} · ${t.kind}</span>
+            </div>
+            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1rem;">#${t.id}: ${escapeHTML(title)} ${isEarned ? ' <span style="color:var(--success-color);">✓</span>' : ''}</h4>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 0.75rem 0;"><em>"${escapeHTML(t.description)}"</em></p>
+            <p style="font-size: 0.8rem; color: var(--warning-color); margin: 0; background: var(--bg-secondary); padding: 0.5rem; border-radius: var(--border-radius);">
+              Requirement not yet published by PowerPyx; guide follows the official description only.
+            </p>
+          </div>
+          <div style="margin-top: 1rem; text-align: right;">
+            <button class="button-secondary" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; cursor: pointer;" data-jump-id="${t.id}">View in Tracker →</button>
           </div>
         </div>
-      </div>
+      `;
+    }).join('');
 
-      <!-- Actions Speak Louder Card -->
-      <div class="caution-card">
-        <div class="missable-header-tag caution">⚠️ Permanent Character Profile Caution</div>
-        <div class="stage-title-row">
-          <h3 class="missable-title">#${asl.id}: ${escapeHTML(asl.name)} <span class="badge-${asl.grade}" style="font-size: 11px; padding: 0.15rem 0.4rem;">${asl.grade}</span></h3>
-          <button class="btn btn-secondary" data-jump-id="${asl.id}">View in Tracker →</button>
+    containerEl.innerHTML = `
+      <div class="missables-container-inner" style="padding: 1.5rem; max-width: 1400px; margin: 0 auto;">
+        <div style="margin-bottom: 1.5rem; padding: 1.25rem; background: var(--surface-color); border: 1px solid var(--surface-secondary); border-radius: var(--border-radius-lg);">
+          <h2 style="color: var(--accent-color); margin-top: 0; font-size: 1.35rem;">Missables, Cautions &amp; Unreleased Requirements</h2>
+          <p style="margin: 0.5rem 0; color: var(--text-primary); font-size: 0.95rem;">
+            Official scope audit: exactly <strong>one strictly missable trophy</strong> (Chapter 1 meditation), <strong>one caution trophy</strong> (permanent Irredeemable profile), and <strong>five unreleased requirements</strong> where guides rely solely on official descriptions. Our sources record no disagreement.
+          </p>
         </div>
-        <p><strong>Description:</strong> ${escapeHTML(asl.description)}</p>
-        <div class="missable-body" style="margin-top: 1rem;">
-          <h4 style="color: #f87171; margin-bottom: 0.3rem;">Permanent Irredeemable Criminal Profile</h4>
-          <p><strong>Caution:</strong> This trophy permanently modifies your career profile to 'Irredeemable Criminal'. While not missable in terms of a temporal window, it is an irreversible profile state once triggered across your save file. Players aiming for specific clean character playthrough stats should take note (GTABase).</p>
-          <h4 style="color: var(--text-main); margin-top: 1rem; margin-bottom: 0.3rem;">Guide &amp; Steps</h4>
-          <p>${escapeHTML(asl.guide)}</p>
+
+        <!-- Positive Mental Attitude Card -->
+        <div class="missable-card" style="background: #2a2200; border: 1px solid #7a6a00; border-radius: var(--border-radius-lg); padding: 1.5rem; margin-bottom: 1.5rem;">
+          <div style="display: inline-block; background: #3d3000; color: var(--warning-color); font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.75rem; border-radius: 4px; margin-bottom: 0.75rem; text-transform: uppercase;">
+            ⚠️ POSSIBLY MISSABLE — #28 Positive Mental Attitude
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+            <h3 style="margin: 0; color: var(--text-primary); font-size: 1.2rem;">${escapeHTML(pma.name)} <span class="badge-${pma.grade}" style="font-size: 11px; padding: 0.15rem 0.4rem; border-radius: 3px;">${pma.grade}</span></h3>
+            <button class="button-primary" data-jump-id="${pma.id}">View in Tracker →</button>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1rem;"><em>"${escapeHTML(pma.description)}"</em></p>
+
+          <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: var(--border-radius); margin-bottom: 1rem;">
+            <h4 style="color: var(--warning-color); margin-top: 0; margin-bottom: 0.5rem;">Miss Window &amp; Critical Warning</h4>
+            <p style="margin: 0; font-size: 0.9rem; color: var(--text-primary);">
+              Chapter 1 is your sole opportunity for Jason's house meditation spot before story progression locks the area permanently. Missing it locks you out of this trophy until a new playthrough (PowerPyx / GTABase).
+            </p>
+          </div>
+
+          <div style="margin-bottom: 1rem;">
+            <h4 style="color: var(--text-main); margin-top: 0; margin-bottom: 0.5rem; font-size: 0.95rem;">Steps Summary</h4>
+            ${pmaStepsHTML}
+          </div>
+
+          <div class="sources-footer" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.75rem; margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+            <strong>Sources:</strong> ${(pma.sources || []).map(s => `<span class="source-pill" style="margin-left: 0.5rem;">${escapeHTML(s)}</span>`).join('')}
+          </div>
         </div>
-        <div class="sources-footer">
-          <strong>Sources:</strong>
-          <div class="sources-list">
-            ${(asl.sources || []).map(s => `<span class="source-pill">${escapeHTML(s)}</span>`).join('')}
+
+        <!-- Actions Speak Louder Card -->
+        <div class="caution-card" style="background: #2b1a1a; border: 1px solid #8c3232; border-radius: var(--border-radius-lg); padding: 1.5rem; margin-bottom: 2rem;">
+          <div style="display: inline-block; background: #5c1d1d; color: #ff9999; font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.75rem; border-radius: 4px; margin-bottom: 0.75rem; text-transform: uppercase;">
+            ⚠️ CAUTION — #48 Actions Speak Louder
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+            <h3 style="margin: 0; color: var(--text-primary); font-size: 1.2rem;">${escapeHTML(asl.name)} <span class="badge-${asl.grade}" style="font-size: 11px; padding: 0.15rem 0.4rem; border-radius: 3px;">${asl.grade}</span></h3>
+            <button class="button-primary" data-jump-id="${asl.id}">View in Tracker →</button>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1rem;"><em>"${escapeHTML(asl.description)}"</em></p>
+
+          <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: var(--border-radius); margin-bottom: 1rem;">
+            <h4 style="color: #ff9999; margin-top: 0; margin-bottom: 0.5rem;">Permanent Irredeemable Profile Note</h4>
+            <p style="margin: 0; font-size: 0.9rem; color: var(--text-primary);">
+              This trophy permanently modifies your career profile to 'Irredeemable Criminal'. While not missable in temporal window, it is an irreversible profile state once triggered across your save file (PowerPyx / GTABase).
+            </p>
+          </div>
+
+          <div style="margin-bottom: 1rem;">
+            <h4 style="color: var(--text-main); margin-top: 0; margin-bottom: 0.5rem; font-size: 0.95rem;">Steps Summary</h4>
+            ${aslStepsHTML}
+          </div>
+
+          <div class="sources-footer" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.75rem; margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+            <strong>Sources:</strong> ${(asl.sources || []).map(s => `<span class="source-pill" style="margin-left: 0.5rem;">${escapeHTML(s)}</span>`).join('')}
+          </div>
+        </div>
+
+        <!-- Not Yet Known Section -->
+        <div style="margin-bottom: 1rem;">
+          <h3 style="color: var(--accent-color); font-size: 1.2rem; margin-bottom: 1rem;">Not Yet Known (5 Trophies)</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+            PowerPyx and GTABase list the specific mechanics for these trophies as not yet published. Our guide follows the official description only.
+          </p>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+            ${unknownsHTML}
           </div>
         </div>
       </div>

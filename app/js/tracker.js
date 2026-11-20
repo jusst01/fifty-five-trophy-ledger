@@ -1,137 +1,216 @@
-/* app/js/tracker.js — Tracker Header, Progress Ring, and Trophy List Rendering */
+/* app/js/tracker.js — Tracker Dashboard and 3-Pane Renderer (v2) */
 
 window.TrackerRenderer = {
   updateDashboard: function(trophies, earnedMap) {
-    const total = trophies.length; // 55
-    const earnedIds = Object.keys(earnedMap).filter(id => earnedMap[id]);
-    const earnedCount = earnedIds.length;
+    const total = trophies.length;
+    const earnedCount = window.StorageManager.getEarnedCount(trophies, earnedMap);
 
-    // 1. Progress Ring
-    const ringFill = document.getElementById('ring-fill');
+    // Update Header Counter
     const earnedDisplay = document.getElementById('earned-count-display');
-    if (earnedDisplay) earnedDisplay.textContent = `${earnedCount} of ${total}`;
-
-    if (ringFill) {
-      const circumference = 2 * Math.PI * 42; // r=42 -> ~263.89
-      const progress = Math.min(earnedCount / total, 1);
-      const offset = circumference - (progress * circumference);
-      ringFill.style.strokeDasharray = `${circumference} ${circumference}`;
-      ringFill.style.strokeDashoffset = offset;
+    if (earnedDisplay) {
+      const counts = { platinum: 0, gold: 0, silver: 0, bronze: 0 };
+      trophies.forEach(t => {
+        if (window.StorageManager.isEarned(t.id, earnedMap)) counts[t.grade]++;
+      });
+      earnedDisplay.innerHTML = `
+        <span style="font-weight:700; color:var(--accent-color);">${earnedCount} / ${total} earned</span> &nbsp;|&nbsp;
+        <span><span id="count-platinum">${counts.platinum}</span>P</span> /
+        <span><span id="count-gold">${counts.gold}</span>G</span> /
+        <span><span id="count-silver">${counts.silver}</span>S</span> /
+        <span><span id="count-bronze">${counts.bronze}</span>B</span>
+      `;
     }
 
-    // 2. Grade Counters
-    const counts = { platinum: 0, gold: 0, silver: 0, bronze: 0 };
-    const totals = { platinum: 1, gold: 2, silver: 6, bronze: 46 };
+    // Update Audit Strip
+    const auditStrip = document.getElementById('audit-strip');
+    if (auditStrip) {
+      const grades = trophies.reduce((acc, t) => { acc[t.grade]++; return acc; }, { platinum: 0, gold: 0, silver: 0, bronze: 0 });
+      const hidden = trophies.filter(t => t.secret).length;
+      const cited = trophies.filter(t => t.sources && t.sources.length > 0).length;
+      const missable = trophies.filter(t => t.flag === 'MISSABLE').length;
+      const caution = trophies.filter(t => t.flag === 'CAUTION').length;
+      const unknown = trophies.filter(t => t.flag === 'unknown').length;
+      const totalSteps = trophies.reduce((acc, t) => acc + (t.steps?.length || 0), 0);
+      const citedSteps = trophies.reduce((acc, t) => acc + (t.steps?.filter(s => s.cites && s.cites.length > 0).length || 0), 0);
 
-    trophies.forEach(t => {
-      if (window.StorageManager.isEarned(t.id, earnedMap)) {
-        if (counts[t.grade] !== undefined) {
-          counts[t.grade]++;
-        }
-      }
-    });
-
-    const platEl = document.getElementById('count-platinum');
-    const goldEl = document.getElementById('count-gold');
-    const silvEl = document.getElementById('count-silver');
-    const bronEl = document.getElementById('count-bronze');
-
-    if (platEl) platEl.textContent = `${counts.platinum}/${totals.platinum}`;
-    if (goldEl) goldEl.textContent = `${counts.gold}/${totals.gold}`;
-    if (silvEl) silvEl.textContent = `${counts.silver}/${totals.silver}`;
-    if (bronEl) bronEl.textContent = `${counts.bronze}/${totals.bronze}`;
-
-    // 3. Hidden Count
-    const hiddenCount = trophies.filter(t => t.secret).length;
-    const hiddenText = document.getElementById('hidden-stats-text');
-    if (hiddenText) {
-      hiddenText.textContent = `Secret trophies: ${hiddenCount} hidden by default`;
+      auditStrip.textContent = `${total} official · ${grades.platinum}P ${grades.gold}G ${grades.silver}S ${grades.bronze}B · ${hidden} hidden · ${cited}/${total} guides cite a source · ${citedSteps}/${totalSteps} steps cited · 4 sources checked Nov 2026 · ${missable} possibly missable · ${caution} caution · ${unknown} not yet known · 0 single-source`;
     }
   },
 
-  renderList: function(containerEl, trophies, earnedMap, filterGroup, gradeFilter, searchQuery, sortOption, expandedTrophyId, callbacks) {
-    if (!containerEl) return;
+  renderFilterButtons: function(filterRowEl, trophies, currentFilter, onSelectFilter) {
+    if (!filterRowEl) return;
 
+    // Check if filter buttons container already exists inside filterRowEl
+    let btnContainer = filterRowEl.querySelector('.filter-buttons-container');
+    if (!btnContainer) {
+      btnContainer = document.createElement('div');
+      btnContainer.className = 'filter-buttons-container';
+      // Insert at the beginning of filter-row
+      filterRowEl.insertBefore(btnContainer, filterRowEl.firstChild);
+    }
+
+    const filters = [
+      { key: 'all', label: 'All' },
+      { key: 'platinum', label: 'Platinum' },
+      { key: 'story', label: 'Story' },
+      { key: 'strands', label: 'Strands' },
+      { key: 'collectibles', label: 'Collectibles' },
+      { key: 'activities', label: 'Activities' },
+      { key: 'feats', label: 'Feats' },
+      { key: 'money', label: 'Money' },
+      { key: 'completion', label: 'Completion' },
+      { key: 'missable', label: 'Missable' },
+      { key: 'caution', label: 'Caution' },
+      { key: 'unknown', label: 'Not yet known' },
+      { key: 'hidden', label: 'Hidden' }
+    ];
+
+    btnContainer.innerHTML = filters.map(f => {
+      const count = window.FilterManager.getCount(trophies, f.key);
+      const isActive = currentFilter === f.key;
+      return `
+        <button class="filter-pill-btn ${isActive ? 'active' : ''}" data-filter="${f.key}">
+          ${f.label} <span class="filter-count">(${count})</span>
+        </button>
+      `;
+    }).join('');
+
+    btnContainer.querySelectorAll('.filter-pill-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-filter');
+        if (typeof onSelectFilter === 'function') {
+          onSelectFilter(key);
+        }
+      });
+    });
+  },
+
+  renderChecklist: function(containerEl, trophies, earnedMap, filterGroup, gradeFilter, searchQuery, sortOption, expandedTrophyId, callbacks) {
+    if (!containerEl) return;
     const filtered = window.FilterManager.filterAndSort(trophies, filterGroup, gradeFilter, searchQuery, sortOption, earnedMap);
 
     if (filtered.length === 0) {
-      containerEl.innerHTML = `
-        <div style="background-color: var(--bg-secondary); border: 1px solid var(--border-color); padding: 3rem; text-align: center; border-radius: 0.75rem; color: var(--text-muted);">
-          <h3 style="font-size: 1.2rem; color: var(--text-main); margin-bottom: 0.5rem;">No trophies found</h3>
-          <p>Try adjusting your search query, grade filter, or category selection.</p>
-        </div>
-      `;
+      containerEl.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-muted);">No trophies match the current filter or search.</div>';
       return;
     }
 
-    let html = '';
-
-    filtered.forEach(t => {
+    containerEl.innerHTML = filtered.map(t => {
       const isEarned = window.StorageManager.isEarned(t.id, earnedMap);
-      const isExpanded = Number(expandedTrophyId) === Number(t.id);
+      const isSelected = Number(expandedTrophyId) === Number(t.id);
       const title = window.SpoilerManager.getDisplayTitle(t, earnedMap);
-      const desc = window.SpoilerManager.getDisplayDescription(t, earnedMap);
-      const gradeLetter = (t.grade && t.grade[0]) ? t.grade[0].toUpperCase() : 'B';
 
-      html += `
-        <div class="trophy-row-wrapper ${isEarned ? 'earned' : ''} ${isExpanded ? 'expanded' : ''}" data-trophy-id="${t.id}">
-          <div class="trophy-main" data-action="toggle-expand" data-trophy-id="${t.id}">
-            <div class="trophy-checkbox-wrap" onclick="event.stopPropagation();">
-              <input type="checkbox" class="trophy-checkbox" data-checkbox-id="${t.id}" ${isEarned ? 'checked' : ''} title="Mark trophy as earned">
-            </div>
-            <div class="trophy-badge-col">
-              <span class="trophy-badge badge-${t.grade}">${t.grade}</span>
-            </div>
-            <div class="trophy-info">
-              <div class="trophy-title-row">
-                <span class="trophy-name">${escapeHTML(title)}</span>
-                <span class="trophy-id-tag">#${t.id}</span>
+      return `
+        <div class="trophy-row-wrapper ${isEarned ? 'earned' : ''} ${isSelected ? 'selected' : ''}" data-trophy-id="${t.id}">
+          <input type="checkbox" class="trophy-checkbox" data-checkbox-id="${t.id}" ${isEarned ? 'checked' : ''} title="Toggle earned">
+          <div class="trophy-row-content" style="flex-grow:1; display:flex; align-items:center; gap:0.75rem; cursor:pointer;" data-select-id="${t.id}">
+            <span class="trophy-badge badge-${t.grade}">${t.grade[0].toUpperCase()}</span>
+            <div style="flex-grow:1;">
+              <div style="font-weight: 600; color: var(--text-primary);">${escapeHTML(title)}</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary); display:flex; gap:0.5rem; align-items:center;">
+                <span>${t.kind} · Stage ${t.stage}</span>
+                ${t.flag ? `<span class="flag-badge" style="font-size:10px; padding:0.1rem 0.3rem; background:var(--surface-secondary); border-radius:3px; color:var(--warning-color);">${t.flag}</span>` : ''}
               </div>
-              <div class="trophy-desc">${escapeHTML(desc)}</div>
             </div>
-            <div class="trophy-meta-badges">
-              <span class="kind-tag">${escapeHTML(t.kind)}</span>
-              <span class="stage-tag">Stage ${t.stage}</span>
-              <span class="expand-chevron">▼</span>
-            </div>
-          </div>
-          <div class="trophy-expanded-panel" data-panel-id="${t.id}">
-            ${window.GuideRenderer.renderGuideHTML(t, earnedMap)}
           </div>
         </div>
       `;
-    });
+    }).join('');
 
-    containerEl.innerHTML = html;
-
-    // Attach event listeners
     containerEl.querySelectorAll('.trophy-checkbox').forEach(chk => {
       chk.addEventListener('change', (e) => {
-        const id = Number(chk.getAttribute('data-checkbox-id'));
-        if (callbacks && typeof callbacks.onToggleEarned === 'function') {
-          callbacks.onToggleEarned(id);
-        }
-      });
-    });
-
-    containerEl.querySelectorAll('[data-action="toggle-expand"]').forEach(row => {
-      row.addEventListener('click', () => {
-        const id = Number(row.getAttribute('data-trophy-id'));
-        if (callbacks && typeof callbacks.onExpandToggle === 'function') {
-          callbacks.onExpandToggle(id);
-        }
-      });
-    });
-
-    containerEl.querySelectorAll('.reveal-secret-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const id = Number(btn.getAttribute('data-reveal-id'));
-        if (callbacks && typeof callbacks.onRevealSecret === 'function') {
-          callbacks.onRevealSecret(id);
-        }
+        callbacks.onToggleEarned(Number(chk.getAttribute('data-checkbox-id')));
       });
     });
+
+    containerEl.querySelectorAll('.trophy-row-content').forEach(row => {
+      row.addEventListener('click', () => {
+        callbacks.onSelect(Number(row.getAttribute('data-select-id')));
+      });
+    });
+  },
+
+  renderDetail: function(containerEl, trophy, earnedMap, callbacks) {
+    if (!containerEl) return;
+    if (!trophy) {
+      containerEl.innerHTML = '<p style="padding: 2rem; text-align: center; color: var(--text-muted);">Select a trophy to view details.</p>';
+      return;
+    }
+
+    const title = window.SpoilerManager.getDisplayTitle(trophy, earnedMap);
+    const desc = window.SpoilerManager.getDisplayDescription(trophy, earnedMap);
+    const isRevealed = window.SpoilerManager.isRevealed(trophy.id, trophy, earnedMap);
+
+    let calloutHTML = '';
+    if (trophy.flag && trophy.steps && trophy.steps.length > 0) {
+      const lastStep = trophy.steps[trophy.steps.length - 1];
+      const flagLabel = trophy.flag === 'MISSABLE' ? 'MISS WINDOW / CRITICAL WARNING' : (trophy.flag === 'CAUTION' ? 'CAUTION / PROFILE NOTE' : 'NOT YET KNOWN');
+      calloutHTML = `
+        <div class="amber-banner" style="margin: 1rem 0; flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="banner-icon">⚠️</span>
+            <strong>${flagLabel}</strong>
+          </div>
+          <p style="margin:0; font-size:var(--font-size-sm);">${escapeHTML(lastStep.text)}</p>
+        </div>
+      `;
+    }
+
+    let revealButtonHTML = '';
+    if (!isRevealed && trophy.secret) {
+      revealButtonHTML = `
+        <div style="margin: 1rem 0;">
+          <button class="button-primary reveal-detail-btn" data-reveal-id="${trophy.id}">Reveal Secret Details</button>
+        </div>
+      `;
+    }
+
+    let guideContentHTML = window.GuideRenderer.renderGuideHTML(trophy, earnedMap);
+
+    containerEl.innerHTML = `
+      <div class="trophy-expanded-panel">
+        <h2>${escapeHTML(title)}</h2>
+        <p style="font-size: var(--font-size-lg); color: var(--text-secondary); margin-bottom: 1rem;"><em>"${escapeHTML(desc)}"</em></p>
+        <div class="meta-line" style="font-size: var(--font-size-sm); color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">
+          ${trophy.grade.toUpperCase()} · ${trophy.kind} · Stage ${trophy.stage}
+        </div>
+        <div class="badges" style="display:flex; gap:0.5rem; margin-bottom:1rem;">
+          ${trophy.flag ? `<span class="flag-badge" style="background:#3d3000; color:var(--warning-color); padding:0.2rem 0.5rem; border-radius:4px; font-weight:bold; font-size:11px;">${trophy.flag}</span>` : ''}
+          ${trophy.secret ? `<span class="flag-badge" style="background:var(--surface-secondary); color:var(--text-secondary); padding:0.2rem 0.5rem; border-radius:4px; font-size:11px;">HIDDEN</span>` : ''}
+        </div>
+        ${revealButtonHTML}
+        ${calloutHTML}
+        <div class="steps-section" style="margin-top: 1.5rem;">
+          ${guideContentHTML}
+        </div>
+      </div>
+    `;
+
+    const revealBtn = containerEl.querySelector('.reveal-detail-btn');
+    if (revealBtn && callbacks && callbacks.onReveal) {
+      revealBtn.addEventListener('click', () => {
+        callbacks.onReveal(trophy.id);
+      });
+    }
+  },
+
+  renderSources: function(containerEl, sourcesRail) {
+    if (!containerEl) return;
+    containerEl.innerHTML = `
+      <h3>Sources — checked Nov 2026</h3>
+      <ul style="list-style: none; padding: 0; margin: 1rem 0;">
+        ${sourcesRail.map(s => `
+          <li style="margin-bottom: 1rem; font-size: var(--font-size-sm);">
+            <strong>[${s.n}] ${escapeHTML(s.name)}</strong><br>
+            <span style="color: var(--text-secondary);">${escapeHTML(s.role)}</span><br>
+            <span style="color: var(--accent-color); font-weight: 600;">cited by ${s.cited_by} of 55 guides</span>
+          </li>
+        `).join('')}
+      </ul>
+      <p style="font-size: var(--font-size-sm); color: var(--text-muted); border-top: 1px solid var(--surface-secondary); pt: 1rem; margin-top: 1rem;">
+        Every step cites its source by number. The official list [3][4] gives each trophy its name, description and grade.
+      </p>
+    `;
   }
 };
 

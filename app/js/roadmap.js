@@ -1,108 +1,114 @@
-/* app/js/roadmap.js — 8-Stage Platinum Roadmap Rendering */
+/* app/js/roadmap.js — 8-Stage Platinum Roadmap Stage-Card Grid (v2) */
 
 window.RoadmapRenderer = {
   STAGES_META: [
     {
       stage: 1,
-      title: "Stage 1: Story & Campaign Progression",
-      rationale: "Chapters 1–4, final missions, and named operations. Free-roam continues after story completion (PowerPyx). No mission replay.",
-      hasWarnings: true
+      title: "Stage 1 — Story",
+      tag: "Chapters 1–4 + finals",
+      summary: "Chapters, final mission and the named story missions; meditate at Jason's house in Chapter 1 first."
     },
     {
       stage: 2,
-      title: "Stage 2: Stranger Strands & Encounters",
-      rationale: "Complete character strands including Andy, Kenton, Billy, Randy, and Tyrone finales, plus all 8 stranger strands across Leonida.",
-      hasWarnings: false
+      title: "Stage 2 — Stranger strands",
+      tag: "part of the story",
+      summary: "Andy, Kenton, Billy, Randy, Tyrone finales + complete 8 strands."
     },
     {
       stage: 3,
-      title: "Stage 3: Collectibles & Exploration",
-      rationale: "Discover 3 card sets, WAiNK ×100, meditation spots, 100 vehicles, explore all Leonida districts, register 10 vehicles, and find Bret's unique animal.",
-      hasWarnings: false
+      title: "Stage 3 — Collectibles",
+      tag: "across Leonida",
+      summary: "Card sets, WAiNK x100, meditation spots, vehicles, animals, garages' registers."
     },
     {
       stage: 4,
-      title: "Stage 4: Activities & Challenges",
-      rationale: "Master 250 stunt jumps, Shooting Range golds, drone races at all locations, 20 race wins, fishing vs Cal, arcade games, and 50 of 80 challenges (PowerPyx).",
-      hasWarnings: false
+      title: "Stage 4 — Activities",
+      tag: "along the way",
+      summary: "Stunts, range golds, drone races, race wins, fishing, arcade, 50 of 80 challenges (PowerPyx)."
     },
     {
       stage: 5,
-      title: "Stage 5: Free-Roam Feats & Combat",
-      rationale: "Execute partner wanted escapes, 3 shops back-to-back, 5 bank vaults, armored trucks, undetected jewelry heists, Combat Focus ×5, and gang operations.",
-      hasWarnings: false
+      title: "Stage 5 — Free-roam feats",
+      tag: "open world",
+      summary: "Escapes, robberies, vaults, Combat Focus, Rhino, bowling and the rest of DESIGN.md s.4 stage 5."
     },
     {
       stage: 6,
-      title: "Stage 6: Wealth & Enterprise",
-      rationale: "Launder $250,000 in illicit funds, spend $100,000 across Leonida luxury markets, and purchase all available garage properties.",
-      hasWarnings: false
+      title: "Stage 6 — Money",
+      tag: "fund the finish",
+      summary: "Launder $250k, spend $100k, buy all garages."
     },
     {
       stage: 7,
-      title: "Stage 7: 100% True Completion Mop-Up",
-      rationale: "Unlock 'A Long Road' (Gold). Reaching ~60% true checklist completion triggers final mop-up (~200 hours, difficulty 4/10 per PowerPyx).",
-      hasWarnings: false
+      title: "Stage 7 — 100% mop-up",
+      tag: "the long road",
+      summary: "A Long Road: 100% checklist is about 60% of true completion (PowerPyx)."
     },
     {
       stage: 8,
-      title: "Stage 8: Platinum Crown",
-      rationale: "Acquire 'Vice Got a Price!' by unlocking every other trophy across Leonida to claim Leonida Legend status.",
-      hasWarnings: false
+      title: "Stage 8 — Platinum",
+      tag: "the ledger closes",
+      summary: "Vice Got a Price! once the other 54 land."
     }
   ],
 
   render: function(containerEl, trophies, earnedMap, onJumpToTrophy) {
     if (!containerEl) return;
 
-    let html = ''; // Need to declare html variable here
+    let headerHTML = `
+      <div class="roadmap-header-banner" style="margin-bottom: 1.5rem; padding: 1.25rem; background: var(--surface-color); border: 1px solid var(--surface-secondary); border-radius: var(--border-radius-lg);">
+        <h2 style="color: var(--accent-color); margin-top: 0; font-size: 1.35rem;">Roadmap to the platinum — Vice Got a Price!</h2>
+        <p style="margin: 0.5rem 0; color: var(--text-primary); font-size: 0.95rem;">About 200 hours · difficulty 4/10 · one playthrough · no mission replay · free-roam continues after the story (PowerPyx).</p>
+        <div style="margin-top: 0.75rem; padding: 0.5rem 0.75rem; background: #3d3000; color: var(--warning-color); border-radius: var(--border-radius); font-size: 0.9rem; border: 1px solid #7a6a00;">
+          ⚠️ <strong>Chapter 1 Meditation Missable:</strong> Meditate at Jason's house during Chapter 1 (Positive Mental Attitude). <strong>Cheat Warning:</strong> Cheats disable trophies AND saving (PowerPyx).
+        </div>
+      </div>
+    `;
 
-    window.RoadmapRenderer.STAGES_META.forEach(meta => {
+    let cardsHTML = window.RoadmapRenderer.STAGES_META.map(meta => {
       const stageTrophies = trophies.filter(t => t.stage === meta.stage);
       const total = stageTrophies.length;
       const earned = stageTrophies.filter(t => window.StorageManager.isEarned(t.id, earnedMap)).length;
 
-      let chipsHTML = stageTrophies.map(t => {
+      const chipsHTML = stageTrophies.map(t => {
         const isEarned = window.StorageManager.isEarned(t.id, earnedMap);
         const title = window.SpoilerManager.getDisplayTitle(t, earnedMap);
         const gradeLetter = t.grade[0].toUpperCase();
         return `
-          <button class="trophy-chip ${isEarned ? 'earned-chip' : ''}" data-trophy-id="${t.id}" title="${escapeHTML(title)}">
-            <span class="badge-${t.grade}" style="padding: 0.1rem 0.3rem; border-radius: 2px; font-size: 10px;">${gradeLetter}</span>
-            <span>#${t.id}: ${escapeHTML(title)}</span>
-            ${isEarned ? ' ✓' : ''}
+          <button class="trophy-chip ${isEarned ? 'earned-chip' : ''}" data-trophy-id="${t.id}" title="${escapeHTML(title)}" style="display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; background: var(--bg-secondary); border: 1px solid var(--surface-secondary); padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; color: var(--text-primary); font-size: 0.8rem; transition: background 0.2s;">
+            <span class="badge-${t.grade}" style="width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0;"></span>
+            <span class="chip-label" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-grow: 1;">#${t.id}: ${escapeHTML(title)}</span>
+            ${isEarned ? '<span class="chip-tick" style="color: var(--success-color); font-weight: bold; flex-shrink: 0;">✓</span>' : ''}
           </button>
         `;
       }).join('');
 
-      let warningsHTML = '';
-      if (meta.hasWarnings) {
-        warningsHTML = `
-          <div class="stage-warnings">
-            <div>⚠️ <strong>Chapter 1 Missable:</strong> Meditate at Jason's house during Chapter 1 before finishing the chapter (Positive Mental Attitude) — the only reported missable in the game.</div>
-            <div>⚠️ <strong>Cheat Warning:</strong> Using cheat codes disables trophies AND saving (PowerPyx). Avoid cheats entirely.</div>
+      return `
+        <div class="stage-card" style="background: var(--surface-color); border: 1px solid var(--surface-secondary); border-radius: var(--border-radius-lg); padding: 1.25rem; display: flex; flex-direction: column;">
+          <div class="stage-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; gap: 0.5rem;">
+            <h3 style="margin: 0; color: var(--accent-color); font-size: 1.05rem; line-height: 1.2;">${escapeHTML(meta.title)}</h3>
+            <span class="phase-tag" style="background: var(--surface-secondary); color: var(--text-secondary); font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 3px; text-transform: uppercase; white-space: nowrap;">${escapeHTML(meta.tag)}</span>
           </div>
-        `;
-      }
-
-      html += `
-        <div class="roadmap-card ${meta.stage === 1 ? 'stage-1-card' : ''}">
-          ${warningsHTML}
-          <div class="stage-title-row">
-            <h3 class="stage-title">${escapeHTML(meta.title)}</h3>
-            <span class="stage-progress-pill">${earned}/${total} Earned</span>
-          </div>
-          <p class="stage-rationale">${escapeHTML(meta.rationale)}</p>
-          <div class="stage-trophy-chips">
+          <p class="stage-summary" style="font-size: 0.825rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.4; min-height: 2.4rem;">${escapeHTML(meta.summary)}</p>
+          <div class="stage-trophy-chips" style="display: flex; flex-direction: column; gap: 0.35rem; max-height: 220px; overflow-y: auto; margin-bottom: 0.75rem; padding-right: 2px;">
             ${chipsHTML}
+          </div>
+          <div class="stage-footer" style="border-top: 1px solid var(--surface-secondary); padding-top: 0.5rem; margin-top: auto; font-size: 0.8rem; color: var(--text-muted); text-align: right; font-weight: 600;">
+            ${earned} / ${total} earned in this stage
           </div>
         </div>
       `;
-    });
+    }).join('');
 
-    containerEl.innerHTML = html;
+    containerEl.innerHTML = `
+      <div class="roadmap-container-inner" style="padding: 1.5rem; max-width: 1400px; margin: 0 auto;">
+        ${headerHTML}
+        <div class="roadmap-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;">
+          ${cardsHTML}
+        </div>
+      </div>
+    `;
 
-    // Attach click handlers to chips
     containerEl.querySelectorAll('.trophy-chip').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = Number(btn.getAttribute('data-trophy-id'));

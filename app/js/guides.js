@@ -9,39 +9,25 @@ window.GuideRenderer = {
         <div class="guide-content">
           <h4>Secret Trophy</h4>
           <p>This trophy's details are hidden because spoiler mode is active. Earn this trophy or click below to reveal its guide.</p>
-          <button class="btn btn-primary reveal-secret-btn" data-reveal-id="${trophy.id}">Reveal Secret Details</button>
+          <button class="button-primary reveal-secret-btn" data-reveal-id="${trophy.id}">Reveal Secret Details</button>
         </div>
       `;
     }
 
-    const guideText = trophy.guide || "No guide available yet.";
+    if (!trophy.steps || trophy.steps.length === 0) {
+      return `<div class="guide-content"><p>${escapeHTML(trophy.guide || "No steps available.")}</p></div>`;
+    }
 
-    // Parse sections from guide text (typically separated by double newlines or headers)
-    const paragraphs = guideText.split(/\n\n+/);
-    let sectionsHTML = '';
+    let stepsHTML = trophy.steps.map((step, i) => {
+      let citesHTML = (step.cites || []).map(c => `<span class="citation-chip">[${c}]</span>`).join('');
+      return `
+        <div class="step-item">
+          <div class="step-num">${i + 1}</div>
+          <div class="step-text">${escapeHTML(step.text)} ${citesHTML}</div>
+        </div>
+      `;
+    }).join('');
 
-    paragraphs.forEach(p => {
-      let formatted = escapeHTML(p);
-
-      // Highlight basis tags like (PowerPyx), (GTABase), (Exophase), (PSNProfiles)
-      formatted = formatted
-        .replace(/\((PowerPyx[^)]*)\)/gi, '<span class="basis-tag">($1)</span>')
-        .replace(/\((GTABase[^)]*)\)/gi, '<span class="basis-tag">($1)</span>')
-        .replace(/\((Exophase[^)]*)\)/gi, '<span class="basis-tag">($1)</span>')
-        .replace(/\((PSNProfiles[^)]*)\)/gi, '<span class="basis-tag">($1)</span>');
-
-      // Check if paragraph starts with a header phrase like "What it takes —", "Where and when —", "Steps —", etc.
-      if (formatted.includes(' — ')) {
-        const parts = formatted.split(' — ');
-        const heading = parts[0];
-        const body = parts.slice(1).join(' — ');
-        sectionsHTML += `<h4>${heading}</h4><p>${body}</p>`;
-      } else {
-        sectionsHTML += `<p>${formatted}</p>`;
-      }
-    });
-
-    // Sources footer
     let sourcesHTML = '';
     if (trophy.sources && trophy.sources.length > 0) {
       const pills = trophy.sources.map(s => `<span class="source-pill">${escapeHTML(s)}</span>`).join('');
@@ -55,7 +41,9 @@ window.GuideRenderer = {
 
     return `
       <div class="guide-content">
-        ${sectionsHTML}
+        <div class="steps-container">
+          ${stepsHTML}
+        </div>
         ${sourcesHTML}
       </div>
     `;

@@ -1,4 +1,4 @@
-/* app/js/app.js — Master Controller, Event Handlers, and URL Hash State Management */
+/* app/js/app.js — Master Controller, Event Handlers, and URL Hash State Management (v2) */
 
 function runWhenReady(fn) {
   if (document.readyState === 'loading') {
@@ -8,311 +8,275 @@ function runWhenReady(fn) {
   }
 }
 
-runWhenReady(() => {
-  if (!window.TrackerRenderer) {
-    document.body.innerHTML = 'DEBUG: TrackerRenderer_NOT_LOADED';
-    return;
-  }
-  if (!window.FilterManager) {
-    document.body.innerHTML = 'DEBUG: FilterManager_NOT_LOADED';
-    return;
-  }
+runWhenReady(async () => {
   let trophiesData = [];
+  let sourcesRail = [];
   let earnedState = window.StorageManager.loadEarnedState();
-  let spoilerMode = window.SpoilerManager.loadSpoilerMode();
-  let currentTab = 'tracker';
+  let expandedTrophyId = 28; // Default to PMA id 28
   let currentFilter = 'all';
   let currentGrade = 'all';
   let currentSort = 'roadmap';
   let searchQuery = '';
-  let expandedTrophyId = null;
+  let currentTab = 'tracker'; // tracker | roadmap | missables
 
-  // Callbacks for tracker
-  const trackerCallbacks = {
-    onToggleEarned: function(id) {
-      earnedState = window.StorageManager.toggleEarned(id, earnedState);
-      window.TrackerRenderer.updateDashboard(trophiesData, earnedState);
-      renderTrackerList();
-      if (currentTab === 'roadmap') {
-        window.RoadmapRenderer.render(roadmapContainerEl, trophiesData, earnedState, jumpToTrophy);
-      }
-    },
-    onExpandToggle: function(id) {
-      if (expandedTrophyId === id) {
-        expandedTrophyId = null;
-      } else {
-        expandedTrophyId = id;
-      }
-      updateURLHash();
-      renderTrackerList();
-    },
-    onRevealSecret: function(id) {
-      window.SpoilerManager.revealIndividually(id);
-      renderAll();
-    }
-  };
-
-  // DOM Elements
-  const tabButtons = document.querySelectorAll('.tab-btn');
-  const tabPanes = document.querySelectorAll('.tab-pane');
-  const trophyListEl = document.getElementById('trophy-list');
-  if (!trophyListEl) {
-    document.body.innerHTML = 'DEBUG: trophyListEl_IS_NULL';
-    return;
-  }
-  const roadmapContainerEl = document.getElementById('roadmap-container');
-  const missablesContainerEl = document.getElementById('missables-container');
-  const filterChips = document.querySelectorAll('.chip');
+  const checklistEl = document.getElementById('checklist-pane');
+  const detailEl = document.getElementById('detail-pane');
+  const railEl = document.getElementById('sources-rail');
+  const filterRowEl = document.querySelector('.filter-row');
   const gradeFilterEl = document.getElementById('grade-filter');
   const sortControlEl = document.getElementById('sort-control');
   const searchInputEl = document.getElementById('search-input');
   const spoilerToggleEl = document.getElementById('spoiler-toggle');
   const exportBtnEl = document.getElementById('export-btn');
   const importFileEl = document.getElementById('import-file');
-  const bannerLinkBtn = document.querySelector('[data-goto="missables"]');
 
-  // Initialize spoiler toggle UI state
-  if (spoilerToggleEl) {
-    spoilerToggleEl.checked = spoilerMode;
-    spoilerToggleEl.addEventListener('change', () => {
-      spoilerMode = spoilerToggleEl.checked;
-      window.SpoilerManager.saveSpoilerMode(spoilerMode);
-      renderAll();
-    });
-  }
-
-  if (window.INLINE_TROPHIES_DATA && window.INLINE_TROPHIES_DATA.trophies) {
-    trophiesData = window.INLINE_TROPHIES_DATA.trophies;
-    parseHashState();
-    renderAll();
-    window.addEventListener('hashchange', () => {
-      parseHashState();
-      renderAll();
-    });
-  } else {
-    // Fetch data/trophies.json
-    fetch('data/trophies.json')
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        trophiesData = data.trophies || [];
-        parseHashState();
-        renderAll();
-        window.addEventListener('hashchange', () => {
-          parseHashState();
-          renderAll();
-        });
-      })
-      .catch(err => {
-        console.error('Failed to load trophies.json:', err);
-        if (trophyListEl) {
-          trophyListEl.innerHTML = `<div style="padding: 2rem; color: #f87171; text-align: center;">Failed to load data/trophies.json. Please ensure you are running via a local server. (${err.message})</div>`;
-        }
-      });
-  }
-
-  // Tab switching
-  tabButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tab = btn.getAttribute('data-tab');
-      switchTab(tab, true);
-    });
-  });
-
-  if (bannerLinkBtn) {
-    bannerLinkBtn.addEventListener('click', () => {
-      switchTab('missables', true);
-    });
-  }
-
-  function switchTab(tabName, updateHashFlag) {
-    currentTab = tabName;
-    tabButtons.forEach(b => {
-      if (b.getAttribute('data-tab') === tabName) {
-        b.classList.add('active');
-      } else {
-        b.classList.remove('active');
-      }
-    });
-    tabPanes.forEach(pane => {
-      if (pane.id === `tab-content-${tabName}`) {
-        pane.classList.add('active');
-      } else {
-        pane.classList.remove('active');
-      }
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (updateHashFlag) {
-      updateURLHash();
-    }
-  }
-
-  // Filter chips
-  filterChips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      filterChips.forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      currentFilter = chip.getAttribute('data-filter');
-      updateURLHash();
-      renderTrackerList();
-    });
-  });
-
-  // Grade filter
+  // Initialize Grade Filter options if empty or basic
   if (gradeFilterEl) {
+    gradeFilterEl.innerHTML = `
+      <option value="all">All Grades</option>
+      <option value="platinum">Platinum</option>
+      <option value="gold">Gold</option>
+      <option value="silver">Silver</option>
+      <option value="bronze">Bronze</option>
+    `;
     gradeFilterEl.addEventListener('change', () => {
       currentGrade = gradeFilterEl.value;
-      renderTrackerList();
+      renderAll();
     });
   }
 
-  // Sort control
+  // Initialize Sort Control options
   if (sortControlEl) {
+    sortControlEl.innerHTML = `
+      <option value="roadmap">Sort By: Roadmap (Default)</option>
+      <option value="grade">Sort By: Grade</option>
+      <option value="name">Sort By: Name</option>
+      <option value="kind">Sort By: Kind</option>
+    `;
     sortControlEl.addEventListener('change', () => {
       currentSort = sortControlEl.value;
-      renderTrackerList();
+      renderAll();
     });
   }
 
-  // Search input
+  // Search Input listener
   if (searchInputEl) {
     searchInputEl.addEventListener('input', () => {
       searchQuery = searchInputEl.value;
-      renderTrackerList();
+      renderAll();
     });
   }
 
-  // Export / Import
+  // Spoiler Toggle listener
+  if (spoilerToggleEl) {
+    spoilerToggleEl.addEventListener('click', () => {
+      const currentMode = window.SpoilerManager.loadSpoilerMode();
+      window.SpoilerManager.saveSpoilerMode(!currentMode);
+      renderAll();
+    });
+  }
+
+  // Export Progress listener
   if (exportBtnEl) {
     exportBtnEl.addEventListener('click', () => {
       window.StorageManager.exportProgress(earnedState);
     });
   }
 
+  // Import Progress listener
   if (importFileEl) {
     importFileEl.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = function(evt) {
-        window.StorageManager.importProgress(evt.target.result, (newEarned) => {
-          earnedState = newEarned;
-          renderAll();
-          alert('Progress imported successfully!');
-        }, (errMsg) => {
-          alert(`Import failed: ${errMsg}`);
-        });
+        window.StorageManager.importProgress(
+          evt.target.result,
+          (newEarnedMap) => {
+            earnedState = newEarnedMap;
+            alert('Progress imported successfully!');
+            renderAll();
+          },
+          (errMsg) => {
+            alert('Failed to import progress: ' + errMsg);
+          }
+        );
       };
       reader.readAsText(file);
-      importFileEl.value = '';
+      importFileEl.value = ''; // reset input
     });
   }
 
-  function jumpToTrophy(id) {
-    currentTab = 'tracker';
-    expandedTrophyId = id;
-    currentFilter = 'all';
-    // update chip UI
-    filterChips.forEach(c => {
-      if (c.getAttribute('data-filter') === 'all') c.classList.add('active');
-      else c.classList.remove('active');
+  // Tab Button listeners
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.getAttribute('data-target');
+      if (target) {
+        currentTab = target;
+        updateURLHash();
+        renderAll();
+      }
     });
-    if (gradeFilterEl) gradeFilterEl.value = 'all';
-    if (sortControlEl) sortControlEl.value = 'roadmap';
-    if (searchInputEl) searchInputEl.value = '';
-    searchQuery = '';
-    switchTab('tracker', false);
-    updateURLHash();
+  });
+
+  // Fetch Data
+  try {
+    const response = await fetch('data/trophies.json');
+    const data = await response.json();
+    trophiesData = data.trophies || [];
+    sourcesRail = data.sources_rail || [];
+
+    // Apply URL hash state post-fetch (v1 bug fix regression prevention)
+    parseHashState();
     renderAll();
 
-    // Scroll to row
-    setTimeout(() => {
-      const row = document.querySelector(`[data-trophy-id="${id}"]`);
-      if (row) {
-        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 100);
+    window.addEventListener('hashchange', () => {
+      parseHashState();
+      renderAll();
+    });
+  } catch (err) {
+    console.error('Failed to load trophies.json:', err);
   }
 
   function renderAll() {
+    // Update Dashboard & Audit Strip
     window.TrackerRenderer.updateDashboard(trophiesData, earnedState);
-    renderTrackerList();
-    window.RoadmapRenderer.render(roadmapContainerEl, trophiesData, earnedState, jumpToTrophy);
-    window.MissablesRenderer.render(missablesContainerEl, trophiesData, earnedState, jumpToTrophy);
+
+    // Switch Tab Panes visibility & Active Tab Buttons
+    const tabPanes = {
+      'tracker': document.getElementById('tracker-section'),
+      'roadmap': document.getElementById('roadmap-container'),
+      'missables': document.getElementById('missables-container')
+    };
+
+    for (const [key, pane] of Object.entries(tabPanes)) {
+      if (pane) {
+        if (key === currentTab) {
+          pane.style.display = 'block';
+        } else {
+          pane.style.display = 'none';
+        }
+      }
+    }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const target = btn.getAttribute('data-target');
+      if (target === currentTab) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // Render based on active tab
+    if (currentTab === 'tracker') {
+      // Render filter buttons in filter row
+      if (filterRowEl) {
+        window.TrackerRenderer.renderFilterButtons(filterRowEl, trophiesData, currentFilter, (filterKey) => {
+          currentFilter = filterKey;
+          updateURLHash();
+          renderAll();
+        });
+      }
+
+      // Render Checklist Pane
+      window.TrackerRenderer.renderChecklist(
+        checklistEl,
+        trophiesData,
+        earnedState,
+        currentFilter,
+        currentGrade,
+        searchQuery,
+        currentSort,
+        expandedTrophyId,
+        {
+          onToggleEarned: (id) => {
+            earnedState = window.StorageManager.toggleEarned(id, earnedState);
+            renderAll();
+          },
+          onSelect: (id) => {
+            expandedTrophyId = id;
+            updateURLHash();
+            renderAll();
+          }
+        }
+      );
+
+      // Render Detail Pane
+      const selectedTrophy = trophiesData.find(t => t.id === expandedTrophyId) || trophiesData[0];
+      window.TrackerRenderer.renderDetail(detailEl, selectedTrophy, earnedState, {
+        onReveal: (id) => {
+          window.SpoilerManager.revealIndividually(id);
+          renderAll();
+        }
+      });
+
+      // Render Sources Rail
+      window.TrackerRenderer.renderSources(railEl, sourcesRail);
+
+    } else if (currentTab === 'roadmap') {
+      const roadmapContainer = document.getElementById('roadmap-container');
+      if (roadmapContainer && window.RoadmapRenderer) {
+        window.RoadmapRenderer.render(roadmapContainer, trophiesData, earnedState, (id) => {
+          expandedTrophyId = id;
+          currentTab = 'tracker';
+          updateURLHash();
+          renderAll();
+        });
+      }
+    } else if (currentTab === 'missables') {
+      const missablesContainer = document.getElementById('missables-container');
+      if (missablesContainer && window.MissablesRenderer) {
+        window.MissablesRenderer.render(missablesContainer, trophiesData, earnedState, (id) => {
+          expandedTrophyId = id;
+          currentTab = 'tracker';
+          updateURLHash();
+          renderAll();
+        });
+      }
+    }
   }
 
-  function renderTrackerList() {
-    window.TrackerRenderer.renderList(
-      trophyListEl,
-      trophiesData,
-      earnedState,
-      currentFilter,
-      currentGrade,
-      searchQuery,
-      currentSort,
-      expandedTrophyId,
-      trackerCallbacks
-    );
-  }
-
-  // URL Hash State Sync
   function updateURLHash() {
     const parts = [];
-    if (currentTab && currentTab !== 'tracker') {
-      parts.push(`tab=${currentTab}`);
-    }
-    if (expandedTrophyId) {
-      parts.push(`open=${expandedTrophyId}`);
-    }
-    if (currentFilter && currentFilter !== 'all') {
-      parts.push(`filter=${currentFilter}`);
-    }
+    if (currentTab && currentTab !== 'tracker') parts.push(`tab=${currentTab}`);
+    if (currentFilter && currentFilter !== 'all') parts.push(`filter=${currentFilter}`);
+    if (expandedTrophyId) parts.push(`open=${expandedTrophyId}`);
+
     const seed = window.StorageManager.getSeededEarnedIds();
-    if (seed && seed.length > 0) {
-      parts.push(`seed=${seed.join(',')}`);
-    }
+    if (seed && seed.length > 0) parts.push(`seed=${seed.join(',')}`);
+
     const newHash = parts.length > 0 ? `#${parts.join('&')}` : '#';
-    if (window.location.hash !== newHash) {
-      history.replaceState(null, '', newHash);
-    }
+    history.replaceState(null, '', newHash);
   }
 
   function parseHashState() {
     const hash = window.location.hash;
-    earnedState = window.StorageManager.loadEarnedState();
-    if (!hash || hash === '#') return;
-
-    const cleanHash = hash.replace(/^#/, '');
-    const params = new URLSearchParams(cleanHash.replace(/&/g, '&'));
+    if (!hash || hash === '#') {
+      currentTab = 'tracker';
+      currentFilter = 'all';
+      return;
+    }
+    const params = new URLSearchParams(hash.replace(/^#/, ''));
 
     const tab = params.get('tab');
     if (tab && ['tracker', 'roadmap', 'missables'].includes(tab)) {
       currentTab = tab;
-      switchTab(tab, false);
-    }
-
-    const openId = params.get('open');
-    if (openId) {
-      const num = Number(openId);
-      if (!isNaN(num) && num >= 1 && num <= 55) {
-        expandedTrophyId = num;
-        currentTab = 'tracker';
-        switchTab('tracker', false);
-      }
+    } else {
+      currentTab = 'tracker';
     }
 
     const filter = params.get('filter');
     if (filter) {
       currentFilter = filter;
-      filterChips.forEach(c => {
-        if (c.getAttribute('data-filter') === filter) {
-          c.classList.add('active');
-        } else {
-          c.classList.remove('active');
-        }
-      });
+    } else {
+      currentFilter = 'all';
+    }
+
+    const openId = params.get('open');
+    if (openId) {
+      const num = Number(openId);
+      if (!isNaN(num)) expandedTrophyId = num;
     }
   }
 });
