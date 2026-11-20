@@ -1,60 +1,64 @@
-/* app/js/guides.js — In-Page Guide Parsing and Source Citation Rendering */
+window.FF = window.FF || {};
 
-window.GuideRenderer = {
-  renderGuideHTML: function(trophy, earnedMap) {
-    const isRevealed = window.SpoilerManager.isRevealed(trophy.id, trophy, earnedMap);
+window.FF.guides = (() => {
+  const esc = (str) => {
+    if (typeof str !== 'string') return str;
+    return str.replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#039;');
+  };
 
-    if (!isRevealed) {
-      return `
-        <div class="guide-content">
-          <h4>Secret Trophy</h4>
-          <p>This trophy's details are hidden because spoiler mode is active. Earn this trophy or click below to reveal its guide.</p>
-          <button class="button-primary reveal-secret-btn" data-reveal-id="${trophy.id}">Reveal Secret Details</button>
-        </div>
-      `;
+  const stepListHTML = (trophy) => {
+    if (!trophy.steps || trophy.steps.length === 0) return "";
+    let html = '<ol class="steps">';
+    trophy.steps.forEach((step, i) => {
+      html += `<li class="step-item"><span class="step-num">${i + 1}</span><span class="step-text">${esc(step.text)}</span>`;
+      step.cites.forEach(cite => {
+        html += `<span class="citation-chip">[${cite}]</span>`;
+      });
+      html += '</li>';
+    });
+    html += '</ol>';
+    return html;
+  };
+
+  const calloutHTML = (trophy) => {
+    if (!trophy.steps || trophy.steps.length === 0) return "";
+    const lastStep = trophy.steps[trophy.steps.length - 1];
+    if (trophy.flag === "MISSABLE") {
+      return `<div class="callout callout-missable"><h3>Miss window</h3>${esc(lastStep.text)}</div>`;
     }
-
-    if (!trophy.steps || trophy.steps.length === 0) {
-      return `<div class="guide-content"><p>${escapeHTML(trophy.guide || "No steps available.")}</p></div>`;
+    if (trophy.flag === "CAUTION") {
+      return `<div class="callout callout-caution"><h3>Caution</h3>${esc(lastStep.text)}</div>`;
     }
-
-    let stepsHTML = trophy.steps.map((step, i) => {
-      let citesHTML = (step.cites || []).map(c => `<span class="citation-chip">[${c}]</span>`).join('');
-      return `
-        <div class="step-item">
-          <div class="step-num">${i + 1}</div>
-          <div class="step-text">${escapeHTML(step.text)} ${citesHTML}</div>
-        </div>
-      `;
-    }).join('');
-
-    let sourcesHTML = '';
-    if (trophy.sources && trophy.sources.length > 0) {
-      const pills = trophy.sources.map(s => `<span class="source-pill">${escapeHTML(s)}</span>`).join('');
-      sourcesHTML = `
-        <div class="sources-footer">
-          <strong>Sources:</strong>
-          <div class="sources-list">${pills}</div>
-        </div>
-      `;
+    if (trophy.flag === "unknown") {
+      return `<div class="callout"><h3>Not yet known</h3>${esc(lastStep.text)}</div>`;
     }
+    return "";
+  };
 
-    return `
-      <div class="guide-content">
-        <div class="steps-container">
-          ${stepsHTML}
-        </div>
-        ${sourcesHTML}
-      </div>
-    `;
-  }
-};
+  const badgesHTML = (trophy) => {
+    if (trophy.flag === "MISSABLE") return '<span class="flag-badge flag-missable">POSSIBLY MISSABLE</span>';
+    if (trophy.flag === "CAUTION") return '<span class="flag-badge flag-caution">CAUTION</span>';
+    if (trophy.flag === "unknown") return '<span class="flag-badge flag-unknown">NOT YET KNOWN</span>';
+    return "";
+  };
 
-function escapeHTML(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+  const sourcesFooterHTML = (trophy) => {
+    if (!trophy.sources || trophy.sources.length === 0) return "";
+    return `<div class="sources-footer">Sources: ${trophy.sources.join(' · ')}</div>`;
+  };
+
+  const railHTML = (data) => {
+    let html = '<h2>SOURCES — checked Nov 2026</h2><ol>';
+    data.sources_rail.forEach(s => {
+      html += `<li><span class="citation-chip">[${s.n}]</span> <strong>${esc(s.name)}</strong> — ${esc(s.role)}<br>cited by ${s.cited_by} of 55 guides</li>`;
+    });
+    html += '</ol><p class="rail-note">"Every step cites its source by number. The official list [3][4] gives each trophy its name, description and grade."</p>';
+    return html;
+  };
+
+  return { stepListHTML, calloutHTML, badgesHTML, sourcesFooterHTML, railHTML };
+})();

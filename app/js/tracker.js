@@ -1,224 +1,321 @@
-/* app/js/tracker.js — Tracker Dashboard and 3-Pane Renderer (v2) */
+window.FF = window.FF || {};
 
-window.TrackerRenderer = {
-  updateDashboard: function(trophies, earnedMap) {
+window.FF.tracker = (() => {
+  const esc = (str) => {
+    if (typeof str !== 'string') return String(str);
+    return str.replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#039;');
+  };
+
+  const GRADE_LABEL = {
+    platinum: "Platinum",
+    gold: "Gold",
+    silver: "Silver",
+    bronze: "Bronze"
+  };
+
+  const GRADE_LETTER = {
+    platinum: "P",
+    gold: "G",
+    silver: "S",
+    bronze: "B"
+  };
+
+  const kindLabel = (kind) => {
+    if (typeof kind !== "string" || !kind) return "";
+    return kind.charAt(0).toUpperCase() + kind.slice(1);
+  };
+
+  const gradeLabel = (grade) => GRADE_LABEL[grade] || grade;
+  const gradeLetter = (grade) => GRADE_LETTER[grade] || (grade ? grade.charAt(0).toUpperCase() : "?");
+
+  const trophiesOf = (data) => (data && Array.isArray(data.trophies)) ? data.trophies : [];
+  const progress = () => (FF.state && FF.state.progress) || { version: 1, earned: {} };
+  const earnedMap = () => progress().earned || {};
+  const isEarned = (id) => !!(earnedMap()[id]);
+  const trophyCount = (data) => trophiesOf(data).length;
+
+  /* ------------------------------------------------------------------
+     Audit line — every value computed from the loaded data.
+     ------------------------------------------------------------------ */
+  const auditText = (data) => {
+    const trophies = trophiesOf(data);
+    if (trophies.length === 0) return "";
+
+    const gradeCount = { platinum: 0, gold: 0, silver: 0, bronze: 0 };
+    let secret = 0;
+    let missable = 0;
+    let caution = 0;
+    let unknown = 0;
+    let singleSource = 0;
+    let guidesWithSource = 0;
+    let totalSteps = 0;
+    let citedSteps = 0;
+
+    trophies.forEach(t => {
+      if (gradeCount[t.grade] !== undefined) gradeCount[t.grade] += 1;
+      if (t.secret) secret += 1;
+      if (t.flag === "MISSABLE") missable += 1;
+      if (t.flag === "CAUTION") caution += 1;
+      if (t.flag === "unknown") unknown += 1;
+
+      const sources = Array.isArray(t.sources) ? t.sources : [];
+      if (sources.length > 0) guidesWithSource += 1;
+      if (sources.length === 1) singleSource += 1;
+
+      const steps = Array.isArray(t.steps) ? t.steps : [];
+      totalSteps += steps.length;
+      steps.forEach(s => {
+        if (Array.isArray(s.cites) && s.cites.length > 0) citedSteps += 1;
+      });
+    });
+
+    const railCount = Array.isArray(data.sources_rail) ? data.sources_rail.length : 0;
     const total = trophies.length;
-    const earnedCount = window.StorageManager.getEarnedCount(trophies, earnedMap);
 
-    // Update Header Counter
-    const earnedDisplay = document.getElementById('earned-count-display');
-    if (earnedDisplay) {
-      const counts = { platinum: 0, gold: 0, silver: 0, bronze: 0 };
-      trophies.forEach(t => {
-        if (window.StorageManager.isEarned(t.id, earnedMap)) counts[t.grade]++;
-      });
-      earnedDisplay.innerHTML = `
-        <span style="font-weight:700; color:var(--accent-color);">${earnedCount} / ${total} earned</span> &nbsp;|&nbsp;
-        <span><span id="count-platinum">${counts.platinum}</span>P</span> /
-        <span><span id="count-gold">${counts.gold}</span>G</span> /
-        <span><span id="count-silver">${counts.silver}</span>S</span> /
-        <span><span id="count-bronze">${counts.bronze}</span>B</span>
-      `;
+    return [
+      total + " official",
+      gradeCount.platinum + "P " + gradeCount.gold + "G " + gradeCount.silver + "S " + gradeCount.bronze + "B",
+      secret + " hidden",
+      guidesWithSource + "/" + total + " guides cite a source",
+      citedSteps + "/" + totalSteps + " steps cited",
+      railCount + " sources checked Nov 2026",
+      missable + " possibly missable",
+      caution + " caution",
+      unknown + " not yet known",
+      singleSource + " single-source"
+    ].join(" · ");
+  };
+
+  const renderAudit = () => {
+    const el = document.getElementById("audit-strip");
+    if (!el) return;
+    const data = FF.state && FF.state.data;
+    el.textContent = data ? auditText(data) : "";
+  };
+
+  const renderCounter = () => {
+    const el = document.getElementById("earned-counter");
+    if (!el) return;
+    const earned = FF.store.earnedCount(progress());
+    const total = trophyCount(FF.state && FF.state.data) || 55;
+    el.innerHTML = '<span class="earned-n">' + earned + "</span> / " + total + " earned";
+  };
+
+  /* ------------------------------------------------------------------
+     Filter row
+     ------------------------------------------------------------------ */
+  const renderFilterRow = () => {
+    const row = document.getElementById("filter-row");
+    if (!row) return;
+    const data = FF.state && FF.state.data;
+    if (!data) { row.innerHTML = ""; return; }
+
+    const counts = FF.filters.counts(trophiesOf(data));
+    const current = FF.state.group;
+
+    let html = "";
+    for (const key in FF.filters.GROUPS) {
+      if (!Object.prototype.hasOwnProperty.call(FF.filters.GROUPS, key)) continue;
+      const active = key === current ? " active" : "";
+      html += '<button class="filter-btn' + active + '" type="button" data-group="' + esc(key) + '" aria-pressed="' + (key === current) + '">'
+        + esc(FF.filters.GROUPS[key])
+        + ' <span class="count">' + (counts[key] || 0) + "</span></button>";
     }
+    row.innerHTML = html;
 
-    // Update Audit Strip
-    const auditStrip = document.getElementById('audit-strip');
-    if (auditStrip) {
-      const grades = trophies.reduce((acc, t) => { acc[t.grade]++; return acc; }, { platinum: 0, gold: 0, silver: 0, bronze: 0 });
-      const hidden = trophies.filter(t => t.secret).length;
-      const cited = trophies.filter(t => t.sources && t.sources.length > 0).length;
-      const missable = trophies.filter(t => t.flag === 'MISSABLE').length;
-      const caution = trophies.filter(t => t.flag === 'CAUTION').length;
-      const unknown = trophies.filter(t => t.flag === 'unknown').length;
-      const totalSteps = trophies.reduce((acc, t) => acc + (t.steps?.length || 0), 0);
-      const citedSteps = trophies.reduce((acc, t) => acc + (t.steps?.filter(s => s.cites && s.cites.length > 0).length || 0), 0);
-
-      auditStrip.textContent = `${total} official · ${grades.platinum}P ${grades.gold}G ${grades.silver}S ${grades.bronze}B · ${hidden} hidden · ${cited}/${total} guides cite a source · ${citedSteps}/${totalSteps} steps cited · 4 sources checked Nov 2026 · ${missable} possibly missable · ${caution} caution · ${unknown} not yet known · 0 single-source`;
-    }
-  },
-
-  renderFilterButtons: function(filterRowEl, trophies, currentFilter, onSelectFilter) {
-    if (!filterRowEl) return;
-
-    // Check if filter buttons container already exists inside filterRowEl
-    let btnContainer = filterRowEl.querySelector('.filter-buttons-container');
-    if (!btnContainer) {
-      btnContainer = document.createElement('div');
-      btnContainer.className = 'filter-buttons-container';
-      // Insert at the beginning of filter-row
-      filterRowEl.insertBefore(btnContainer, filterRowEl.firstChild);
-    }
-
-    const filters = [
-      { key: 'all', label: 'All' },
-      { key: 'platinum', label: 'Platinum' },
-      { key: 'story', label: 'Story' },
-      { key: 'strands', label: 'Strands' },
-      { key: 'collectibles', label: 'Collectibles' },
-      { key: 'activities', label: 'Activities' },
-      { key: 'feats', label: 'Feats' },
-      { key: 'money', label: 'Money' },
-      { key: 'completion', label: 'Completion' },
-      { key: 'missable', label: 'Missable' },
-      { key: 'caution', label: 'Caution' },
-      { key: 'unknown', label: 'Not yet known' },
-      { key: 'hidden', label: 'Hidden' }
-    ];
-
-    btnContainer.innerHTML = filters.map(f => {
-      const count = window.FilterManager.getCount(trophies, f.key);
-      const isActive = currentFilter === f.key;
-      return `
-        <button class="filter-pill-btn ${isActive ? 'active' : ''}" data-filter="${f.key}">
-          ${f.label} <span class="filter-count">(${count})</span>
-        </button>
-      `;
-    }).join('');
-
-    btnContainer.querySelectorAll('.filter-pill-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const key = btn.getAttribute('data-filter');
-        if (typeof onSelectFilter === 'function') {
-          onSelectFilter(key);
-        }
+    row.querySelectorAll(".filter-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        FF.state.group = btn.dataset.group;
+        if (FF.updateHash) FF.updateHash();
+        FF.renderAll();
       });
     });
-  },
+  };
 
-  renderChecklist: function(containerEl, trophies, earnedMap, filterGroup, gradeFilter, searchQuery, sortOption, expandedTrophyId, callbacks) {
-    if (!containerEl) return;
-    const filtered = window.FilterManager.filterAndSort(trophies, filterGroup, gradeFilter, searchQuery, sortOption, earnedMap);
+  /* ------------------------------------------------------------------
+     Checklist
+     ------------------------------------------------------------------ */
+  const highlight = (id) => {
+    const pane = document.getElementById("checklist-pane");
+    if (!pane) return;
+    pane.querySelectorAll(".trophy-row-wrapper").forEach(row => {
+      row.classList.toggle("selected", Number(row.dataset.id) === Number(id));
+    });
+  };
 
-    if (filtered.length === 0) {
-      containerEl.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-muted);">No trophies match the current filter or search.</div>';
-      return;
+  const selectTrophy = (id) => {
+    FF.state.openId = Number(id);
+    renderDetail();
+    highlight(id);
+    if (FF.updateHash) FF.updateHash();
+  };
+
+  const rowHTML = (trophy) => {
+    const earned = isEarned(trophy.id);
+    const selected = Number(trophy.id) === Number(FF.state.openId);
+    const name = esc(FF.spoilers.displayName(trophy, earnedMap()));
+    const kind = esc(kindLabel(trophy.kind));
+    const stage = trophy.stage ? "Stage " + trophy.stage : "";
+
+    return '<div class="trophy-row-wrapper' + (selected ? " selected" : "") + (earned ? " earned" : "") + '" data-id="' + trophy.id + '">'
+      + '<input class="row-check" type="checkbox" ' + (earned ? "checked" : "")
+      + ' aria-label="Mark trophy ' + trophy.id + ' earned">'
+      + '<span class="grade-badge grade-' + esc(trophy.grade) + '" title="' + esc(gradeLabel(trophy.grade)) + '">'
+      + esc(gradeLetter(trophy.grade)) + "</span>"
+      + '<div class="row-main">'
+      + '<span class="trophy-name">' + name + "</span>"
+      + '<div class="kind-line">' + kind + (stage ? " · " + stage : "") + "</div>"
+      + (trophy.flag ? FF.guides.badgesHTML(trophy) : "")
+      + "</div></div>";
+  };
+
+  const renderChecklist = () => {
+    const pane = document.getElementById("checklist-pane");
+    if (!pane) return;
+    const data = FF.state && FF.state.data;
+    if (!data) { pane.innerHTML = ""; return; }
+
+    const list = FF.filters.apply(trophiesOf(data), {
+      group: FF.state.group,
+      grade: FF.state.grade,
+      sort: FF.state.sort,
+      query: FF.state.query
+    });
+
+    let html = '<h2 class="pane-title">Checklist</h2>';
+    if (list.length === 0) {
+      html += '<p class="detail-empty">No trophies match these filters.</p>';
+    } else {
+      list.forEach(t => { html += rowHTML(t); });
     }
+    pane.innerHTML = html;
 
-    containerEl.innerHTML = filtered.map(t => {
-      const isEarned = window.StorageManager.isEarned(t.id, earnedMap);
-      const isSelected = Number(expandedTrophyId) === Number(t.id);
-      const title = window.SpoilerManager.getDisplayTitle(t, earnedMap);
+    pane.querySelectorAll(".trophy-row-wrapper").forEach(rowEl => {
+      const id = Number(rowEl.dataset.id);
 
-      return `
-        <div class="trophy-row-wrapper ${isEarned ? 'earned' : ''} ${isSelected ? 'selected' : ''}" data-trophy-id="${t.id}">
-          <input type="checkbox" class="trophy-checkbox" data-checkbox-id="${t.id}" ${isEarned ? 'checked' : ''} title="Toggle earned">
-          <div class="trophy-row-content" style="flex-grow:1; display:flex; align-items:center; gap:0.75rem; cursor:pointer;" data-select-id="${t.id}">
-            <span class="trophy-badge badge-${t.grade}">${t.grade[0].toUpperCase()}</span>
-            <div style="flex-grow:1;">
-              <div style="font-weight: 600; color: var(--text-primary);">${escapeHTML(title)}</div>
-              <div style="font-size: var(--font-size-sm); color: var(--text-secondary); display:flex; gap:0.5rem; align-items:center;">
-                <span>${t.kind} · Stage ${t.stage}</span>
-                ${t.flag ? `<span class="flag-badge" style="font-size:10px; padding:0.1rem 0.3rem; background:var(--surface-secondary); border-radius:3px; color:var(--warning-color);">${t.flag}</span>` : ''}
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    containerEl.querySelectorAll('.trophy-checkbox').forEach(chk => {
-      chk.addEventListener('change', (e) => {
-        e.stopPropagation();
-        callbacks.onToggleEarned(Number(chk.getAttribute('data-checkbox-id')));
+      rowEl.addEventListener("click", (ev) => {
+        if (ev.target && ev.target.closest && ev.target.closest(".row-check")) return;
+        selectTrophy(id);
       });
-    });
 
-    containerEl.querySelectorAll('.trophy-row-content').forEach(row => {
-      row.addEventListener('click', () => {
-        callbacks.onSelect(Number(row.getAttribute('data-select-id')));
-      });
+      const cb = rowEl.querySelector(".row-check");
+      if (cb) {
+        cb.addEventListener("change", () => {
+          FF.store.toggle(progress(), id);
+          if (FF.updateHash) FF.updateHash();
+          renderCounter();
+          renderChecklist();
+          renderDetail();
+        });
+      }
     });
-  },
+  };
 
-  renderDetail: function(containerEl, trophy, earnedMap, callbacks) {
-    if (!containerEl) return;
+  /* ------------------------------------------------------------------
+     Detail pane
+     ------------------------------------------------------------------ */
+  const stepsHTML = (trophy) => {
+    const raw = FF.guides.stepListHTML(trophy);
+    if (!raw) return "";
+
+    // FF.guides emits <li><num><text><chips…></li>; group text+chips into
+    // .step-body so the grid layout keeps the numeral in its own column.
+    return raw.replace(/<li class="step-item">([\s\S]*?)<\/li>/g, (whole, inner) => {
+      const m = inner.match(/^<span class="step-num">([\s\S]*?)<\/span><span class="step-text">([\s\S]*?)<\/span>([\s\S]*)$/);
+      if (!m) return whole;
+      const rest = m[3] ? '<span class="step-cites">' + m[3] + "</span>" : "";
+      return '<li class="step-item"><span class="step-num">' + m[1] + "</span>"
+        + '<span class="step-body"><span class="step-text">' + m[2] + "</span>" + rest + "</span></li>";
+    });
+  };
+
+  const isHidden = (trophy) => {
+    return FF.spoilers.isOn()
+      && !!trophy.secret
+      && !isEarned(trophy.id)
+      && !FF.spoilers.isRevealed(trophy.id);
+  };
+
+  const renderDetail = () => {
+    const pane = document.getElementById("detail-pane");
+    if (!pane) return;
+    const data = FF.state && FF.state.data;
+    if (!data) { pane.innerHTML = ""; return; }
+
+    const trophy = trophiesOf(data).find(t => Number(t.id) === Number(FF.state.openId));
+
     if (!trophy) {
-      containerEl.innerHTML = '<p style="padding: 2rem; text-align: center; color: var(--text-muted);">Select a trophy to view details.</p>';
+      pane.innerHTML = '<h2 class="pane-title">Detail</h2>'
+        + '<p class="detail-empty">Select a trophy from the checklist to read its cited guide.</p>';
       return;
     }
 
-    const title = window.SpoilerManager.getDisplayTitle(trophy, earnedMap);
-    const desc = window.SpoilerManager.getDisplayDescription(trophy, earnedMap);
-    const isRevealed = window.SpoilerManager.isRevealed(trophy.id, trophy, earnedMap);
+    const name = esc(FF.spoilers.displayName(trophy, earnedMap()));
+    const meta = [
+      esc(gradeLabel(trophy.grade)),
+      esc(kindLabel(trophy.kind)),
+      trophy.stage ? "Stage " + trophy.stage : ""
+    ].filter(Boolean).join(" · ");
 
-    let calloutHTML = '';
-    if (trophy.flag && trophy.steps && trophy.steps.length > 0) {
-      const lastStep = trophy.steps[trophy.steps.length - 1];
-      const flagLabel = trophy.flag === 'MISSABLE' ? 'MISS WINDOW / CRITICAL WARNING' : (trophy.flag === 'CAUTION' ? 'CAUTION / PROFILE NOTE' : 'NOT YET KNOWN');
-      calloutHTML = `
-        <div class="amber-banner" style="margin: 1rem 0; flex-direction: column; align-items: flex-start; gap: 0.5rem;">
-          <div style="display:flex; align-items:center; gap:0.5rem;">
-            <span class="banner-icon">⚠️</span>
-            <strong>${flagLabel}</strong>
-          </div>
-          <p style="margin:0; font-size:var(--font-size-sm);">${escapeHTML(lastStep.text)}</p>
-        </div>
-      `;
+    let html = '<h2 class="pane-title">Detail</h2>';
+    html += '<div class="detail-head"><h2 class="detail-title">' + name + "</h2></div>";
+
+    if (isHidden(trophy)) {
+      html += '<p class="detail-desc">Secret trophy — its description and guide stay hidden while spoiler mode is on.</p>';
+      html += '<div class="detail-meta"><span>' + meta + "</span></div>";
+      html += '<div class="detail-badges">' + FF.guides.badgesHTML(trophy) + "</div>";
+      html += '<button id="reveal-btn" class="btn" type="button">Reveal this trophy</button>';
+      pane.innerHTML = html;
+
+      const revealBtn = pane.querySelector("#reveal-btn");
+      if (revealBtn) {
+        revealBtn.addEventListener("click", () => {
+          FF.spoilers.reveal(trophy.id);
+          renderDetail();
+          renderChecklist();
+        });
+      }
+      return;
     }
 
-    let revealButtonHTML = '';
-    if (!isRevealed && trophy.secret) {
-      revealButtonHTML = `
-        <div style="margin: 1rem 0;">
-          <button class="button-primary reveal-detail-btn" data-reveal-id="${trophy.id}">Reveal Secret Details</button>
-        </div>
-      `;
+    html += '<p class="detail-desc">“' + esc(trophy.description) + '”</p>';
+    html += '<div class="detail-meta"><span>' + meta + "</span></div>";
+    html += '<div class="detail-badges">' + FF.guides.badgesHTML(trophy) + "</div>";
+
+    const callout = FF.guides.calloutHTML(trophy);
+    if (callout) html += callout.replace("<h3>", '<h3 class="callout-label">');
+
+    if (trophy.steps && trophy.steps.length) {
+      html += '<h3 class="steps-heading">Steps</h3>';
+      html += stepsHTML(trophy);
     }
 
-    let guideContentHTML = window.GuideRenderer.renderGuideHTML(trophy, earnedMap);
+    html += FF.guides.sourcesFooterHTML(trophy);
+    pane.innerHTML = html;
+  };
 
-    containerEl.innerHTML = `
-      <div class="trophy-expanded-panel">
-        <h2>${escapeHTML(title)}</h2>
-        <p style="font-size: var(--font-size-lg); color: var(--text-secondary); margin-bottom: 1rem;"><em>"${escapeHTML(desc)}"</em></p>
-        <div class="meta-line" style="font-size: var(--font-size-sm); color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">
-          ${trophy.grade.toUpperCase()} · ${trophy.kind} · Stage ${trophy.stage}
-        </div>
-        <div class="badges" style="display:flex; gap:0.5rem; margin-bottom:1rem;">
-          ${trophy.flag ? `<span class="flag-badge" style="background:#3d3000; color:var(--warning-color); padding:0.2rem 0.5rem; border-radius:4px; font-weight:bold; font-size:11px;">${trophy.flag}</span>` : ''}
-          ${trophy.secret ? `<span class="flag-badge" style="background:var(--surface-secondary); color:var(--text-secondary); padding:0.2rem 0.5rem; border-radius:4px; font-size:11px;">HIDDEN</span>` : ''}
-        </div>
-        ${revealButtonHTML}
-        ${calloutHTML}
-        <div class="steps-section" style="margin-top: 1.5rem;">
-          ${guideContentHTML}
-        </div>
-      </div>
-    `;
+  /* ------------------------------------------------------------------
+     Sources rail
+     ------------------------------------------------------------------ */
+  const renderRail = () => {
+    const rail = document.getElementById("sources-rail");
+    if (!rail) return;
+    const data = FF.state && FF.state.data;
+    if (!data) { rail.innerHTML = ""; return; }
+    rail.innerHTML = FF.guides.railHTML(data);
+  };
 
-    const revealBtn = containerEl.querySelector('.reveal-detail-btn');
-    if (revealBtn && callbacks && callbacks.onReveal) {
-      revealBtn.addEventListener('click', () => {
-        callbacks.onReveal(trophy.id);
-      });
-    }
-  },
-
-  renderSources: function(containerEl, sourcesRail) {
-    if (!containerEl) return;
-    containerEl.innerHTML = `
-      <h3>Sources — checked Nov 2026</h3>
-      <ul style="list-style: none; padding: 0; margin: 1rem 0;">
-        ${sourcesRail.map(s => `
-          <li style="margin-bottom: 1rem; font-size: var(--font-size-sm);">
-            <strong>[${s.n}] ${escapeHTML(s.name)}</strong><br>
-            <span style="color: var(--text-secondary);">${escapeHTML(s.role)}</span><br>
-            <span style="color: var(--accent-color); font-weight: 600;">cited by ${s.cited_by} of 55 guides</span>
-          </li>
-        `).join('')}
-      </ul>
-      <p style="font-size: var(--font-size-sm); color: var(--text-muted); border-top: 1px solid var(--surface-secondary); pt: 1rem; margin-top: 1rem;">
-        Every step cites its source by number. The official list [3][4] gives each trophy its name, description and grade.
-      </p>
-    `;
-  }
-};
-
-function escapeHTML(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+  return {
+    auditText,
+    renderAudit,
+    renderCounter,
+    renderFilterRow,
+    renderChecklist,
+    renderDetail,
+    renderRail
+  };
+})();

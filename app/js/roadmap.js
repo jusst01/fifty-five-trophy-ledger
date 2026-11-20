@@ -1,130 +1,171 @@
-/* app/js/roadmap.js — 8-Stage Platinum Roadmap Stage-Card Grid (v2) */
+window.FF = window.FF || {};
 
-window.RoadmapRenderer = {
-  STAGES_META: [
+/* --------------------------------------------------------------------------
+   FIFTY-FIVE v2 — Roadmap view (8 stage cards).
+
+   Reads FF.state.data / FF.state.progress, fills #roadmap-root.
+   Trophies are grouped by their stage field, so nothing here is a hard-coded
+   list of trophy names: add a trophy to the data and it shows up in its stage.
+   -------------------------------------------------------------------------- */
+
+window.FF.roadmap = (() => {
+  const STAGES = [
     {
-      stage: 1,
-      title: "Stage 1 — Story",
+      n: 1,
+      title: "Story",
       tag: "Chapters 1–4 + finals",
-      summary: "Chapters, final mission and the named story missions; meditate at Jason's house in Chapter 1 first."
+      summary: "The chapters, the final mission and the named story missions. Meditate at Jason's house in Chapter 1 first — one meditation spot lives there and its window closes with the chapter."
     },
     {
-      stage: 2,
-      title: "Stage 2 — Stranger strands",
+      n: 2,
+      title: "Stranger strands",
       tag: "part of the story",
-      summary: "Andy, Kenton, Billy, Randy, Tyrone finales + complete 8 strands."
+      summary: "The Andy, Kenton, Billy, Randy and Tyrone finales, and all 8 stranger strands completed."
     },
     {
-      stage: 3,
-      title: "Stage 3 — Collectibles",
+      n: 3,
+      title: "Collectibles",
       tag: "across Leonida",
-      summary: "Card sets, WAiNK x100, meditation spots, vehicles, animals, garages' registers."
+      summary: "Trading-card sets, all 100 WAiNK cards, meditation spots, vehicles, animals and garage registers, gathered across Leonida."
     },
     {
-      stage: 4,
-      title: "Stage 4 — Activities",
+      n: 4,
+      title: "Activities",
       tag: "along the way",
-      summary: "Stunts, range golds, drone races, race wins, fishing, arcade, 50 of 80 challenges (PowerPyx)."
+      summary: "Stunts, shooting-range golds, drone races, race wins, fishing, the arcade — and 50 of the 80 challenges."
     },
     {
-      stage: 5,
-      title: "Stage 5 — Free-roam feats",
+      n: 5,
+      title: "Free-roam feats",
       tag: "open world",
-      summary: "Escapes, robberies, vaults, Combat Focus, Rhino, bowling and the rest of DESIGN.md s.4 stage 5."
+      summary: "Escapes, robberies, vaults, Combat Focus, the Rhino, bowling and the rest of Leonida's open-world feats."
     },
     {
-      stage: 6,
-      title: "Stage 6 — Money",
+      n: 6,
+      title: "Money",
       tag: "fund the finish",
-      summary: "Launder $250k, spend $100k, buy all garages."
+      summary: "Launder $250k, spend $100k, and buy every garage on the map."
     },
     {
-      stage: 7,
-      title: "Stage 7 — 100% mop-up",
+      n: 7,
+      title: "100% mop-up",
       tag: "the long road",
-      summary: "A Long Road: 100% checklist is about 60% of true completion (PowerPyx)."
+      summary: "A Long Road: the in-game 100% checklist — about 60% of true completion (PowerPyx)."
     },
     {
-      stage: 8,
-      title: "Stage 8 — Platinum",
+      n: 8,
+      title: "Platinum",
       tag: "the ledger closes",
-      summary: "Vice Got a Price! once the other 54 land."
+      summary: "Vice Got a Price! lands when the other 54 trophies are earned."
     }
-  ],
+  ];
 
-  render: function(containerEl, trophies, earnedMap, onJumpToTrophy) {
-    if (!containerEl) return;
+  const SUMMARY = "About 200 hours · difficulty 4/10 · one playthrough · no mission replay · free-roam continues after the story (PowerPyx).";
 
-    let headerHTML = `
-      <div class="roadmap-header-banner" style="margin-bottom: 1.5rem; padding: 1.25rem; background: var(--surface-color); border: 1px solid var(--surface-secondary); border-radius: var(--border-radius-lg);">
-        <h2 style="color: var(--accent-color); margin-top: 0; font-size: 1.35rem;">Roadmap to the platinum — Vice Got a Price!</h2>
-        <p style="margin: 0.5rem 0; color: var(--text-primary); font-size: 0.95rem;">About 200 hours · difficulty 4/10 · one playthrough · no mission replay · free-roam continues after the story (PowerPyx).</p>
-        <div style="margin-top: 0.75rem; padding: 0.5rem 0.75rem; background: #3d3000; color: var(--warning-color); border-radius: var(--border-radius); font-size: 0.9rem; border: 1px solid #7a6a00;">
-          ⚠️ <strong>Chapter 1 Meditation Missable:</strong> Meditate at Jason's house during Chapter 1 (Positive Mental Attitude). <strong>Cheat Warning:</strong> Cheats disable trophies AND saving (PowerPyx).
-        </div>
-      </div>
-    `;
+  const WARNING = "Chapter-1 meditation missable: meditate at Jason's house during Chapter 1. Cheats disable trophies AND saving (PowerPyx).";
 
-    let cardsHTML = window.RoadmapRenderer.STAGES_META.map(meta => {
-      const stageTrophies = trophies.filter(t => t.stage === meta.stage);
-      const total = stageTrophies.length;
-      const earned = stageTrophies.filter(t => window.StorageManager.isEarned(t.id, earnedMap)).length;
+  const esc = (str) => {
+    if (typeof str !== "string") return str == null ? "" : String(str);
+    return str.replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#039;");
+  };
 
-      const chipsHTML = stageTrophies.map(t => {
-        const isEarned = window.StorageManager.isEarned(t.id, earnedMap);
-        const title = window.SpoilerManager.getDisplayTitle(t, earnedMap);
-        const gradeLetter = t.grade[0].toUpperCase();
-        return `
-          <button class="trophy-chip ${isEarned ? 'earned-chip' : ''}" data-trophy-id="${t.id}" title="${escapeHTML(title)}" style="display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; background: var(--bg-secondary); border: 1px solid var(--surface-secondary); padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; color: var(--text-primary); font-size: 0.8rem; transition: background 0.2s;">
-            <span class="badge-${t.grade}" style="width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0;"></span>
-            <span class="chip-label" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-grow: 1;">#${t.id}: ${escapeHTML(title)}</span>
-            ${isEarned ? '<span class="chip-tick" style="color: var(--success-color); font-weight: bold; flex-shrink: 0;">✓</span>' : ''}
-          </button>
-        `;
-      }).join('');
+  const trophiesOf = () => {
+    const data = FF.state && FF.state.data;
+    return (data && Array.isArray(data.trophies)) ? data.trophies : [];
+  };
 
-      return `
-        <div class="stage-card" style="background: var(--surface-color); border: 1px solid var(--surface-secondary); border-radius: var(--border-radius-lg); padding: 1.25rem; display: flex; flex-direction: column;">
-          <div class="stage-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; gap: 0.5rem;">
-            <h3 style="margin: 0; color: var(--accent-color); font-size: 1.05rem; line-height: 1.2;">${escapeHTML(meta.title)}</h3>
-            <span class="phase-tag" style="background: var(--surface-secondary); color: var(--text-secondary); font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 3px; text-transform: uppercase; white-space: nowrap;">${escapeHTML(meta.tag)}</span>
-          </div>
-          <p class="stage-summary" style="font-size: 0.825rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.4; min-height: 2.4rem;">${escapeHTML(meta.summary)}</p>
-          <div class="stage-trophy-chips" style="display: flex; flex-direction: column; gap: 0.35rem; max-height: 220px; overflow-y: auto; margin-bottom: 0.75rem; padding-right: 2px;">
-            ${chipsHTML}
-          </div>
-          <div class="stage-footer" style="border-top: 1px solid var(--surface-secondary); padding-top: 0.5rem; margin-top: auto; font-size: 0.8rem; color: var(--text-muted); text-align: right; font-weight: 600;">
-            ${earned} / ${total} earned in this stage
-          </div>
-        </div>
-      `;
-    }).join('');
+  const earnedMap = () => {
+    const progress = FF.state && FF.state.progress;
+    return (progress && progress.earned) || {};
+  };
 
-    containerEl.innerHTML = `
-      <div class="roadmap-container-inner" style="padding: 1.5rem; max-width: 1400px; margin: 0 auto;">
-        ${headerHTML}
-        <div class="roadmap-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;">
-          ${cardsHTML}
-        </div>
-      </div>
-    `;
+  const isEarned = (id) => !!earnedMap()[id];
 
-    containerEl.querySelectorAll('.trophy-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = Number(btn.getAttribute('data-trophy-id'));
-        if (typeof onJumpToTrophy === 'function') {
-          onJumpToTrophy(id);
-        }
-      });
+  /* The shell ships a placeholder .view-title in each tab view; the roadmap's
+     own h2 replaces it. Hide it so the heading is not printed twice — only
+     DIRECT children, so a re-render never hides our own h2. */
+  const hideShellTitle = (root) => {
+    const view = root.closest ? root.closest(".view") : null;
+    if (!view) return;
+    Array.prototype.forEach.call(view.children, child => {
+      if (child !== root && child.classList && child.classList.contains("view-title")) {
+        child.hidden = true;
+      }
     });
-  }
-};
+  };
 
-function escapeHTML(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+  const chipHTML = (trophy) => {
+    const earned = isEarned(trophy.id);
+    // Honour spoiler mode: a secret, unrevealed trophy shows as "Hidden trophy — #id".
+    const label = FF.spoilers.displayName(trophy, earnedMap());
+    const cls = "chip" + (earned ? " chip-earned" : "");
+    const title = earned ? "Earned — " + label : label;
+
+    return '<span class="' + cls + '" title="' + esc(title) + '">'
+      + '<span class="chip-dot grade-' + esc(trophy.grade) + '" aria-hidden="true"></span>'
+      + esc(label)
+      + "</span>";  };
+
+  const cardHTML = (stage, trophies) => {
+    const inStage = trophies.filter(t => Number(t.stage) === stage.n);
+    const earned = inStage.filter(t => isEarned(t.id)).length;
+
+    let html = '<div class="stage-card" data-stage="' + stage.n + '">';
+
+    html += '<div class="stage-card-head">'
+      + '<h3 class="stage-card-title">Stage ' + stage.n + " — " + esc(stage.title) + "</h3>"
+      + '<span class="stage-card-tag">' + esc(stage.tag) + "</span>"
+      + "</div>";
+
+    html += '<p class="stage-card-summary">' + esc(stage.summary) + "</p>";
+
+    html += '<div class="stage-chips">';
+    if (inStage.length === 0) {
+      html += '<span class="chip">No trophies in this stage</span>';
+    } else {
+      inStage.forEach(t => { html += chipHTML(t); });
+    }
+    html += "</div>";
+
+    html += '<div class="stage-card-footer">' + earned + " / " + inStage.length
+      + " earned in this stage</div>";
+
+    html += "</div>";
+    return html;
+  };
+
+  const render = () => {
+    const root = document.getElementById("roadmap-root");
+    if (!root) return;
+
+    hideShellTitle(root);
+
+    const trophies = trophiesOf();
+    if (trophies.length === 0) {
+      root.innerHTML = '<p class="detail-empty">Load the trophy data to see the roadmap.</p>';
+      return;
+    }
+
+    // #roadmap-root ships with .roadmap-grid; the header must span the full
+    // width, so the cards get their own inner grid instead.
+    root.classList.remove("roadmap-grid");
+
+    let html = '<header class="roadmap-head">';
+    html += '<h2 class="view-title">Roadmap to the platinum — Vice Got a Price!</h2>';
+    html += '<p class="roadmap-summary">' + esc(SUMMARY) + "</p>";
+    html += '<p class="roadmap-warning">' + esc(WARNING) + "</p>";
+    html += "</header>";
+
+    html += '<div class="roadmap-grid">';
+    STAGES.forEach(stage => { html += cardHTML(stage, trophies); });
+    html += "</div>";
+
+    root.innerHTML = html;
+  };
+
+  return { STAGES, render };
+})();

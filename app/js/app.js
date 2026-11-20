@@ -1,282 +1,305 @@
-/* app/js/app.js — Master Controller, Event Handlers, and URL Hash State Management (v2) */
+window.FF = window.FF || {};
 
-function runWhenReady(fn) {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', fn);
-  } else {
-    fn();
-  }
-}
+/* --------------------------------------------------------------------------
+   FIFTY-FIVE v2 — bootstrap & wiring.
+   Everything is declared before any render call, then the DOMContentLoaded
+   listener is registered last. Rendering never runs until data is loaded and
+   the full hash state has been applied.
+   -------------------------------------------------------------------------- */
+(() => {
+  const DEFAULT_OPEN_ID = 28;
+  const DEFAULT_TAB = "tracker";
+  const DEFAULT_GROUP = "all";
+  const TAB_VIEWS = {
+    tracker: "view-tracker",
+    roadmap: "view-roadmap",
+    missables: "view-missables"
+  };
 
-runWhenReady(async () => {
-  let trophiesData = [];
-  let sourcesRail = [];
-  let earnedState = window.StorageManager.loadEarnedState();
-  let expandedTrophyId = 28; // Default to PMA id 28
-  let currentFilter = 'all';
-  let currentGrade = 'all';
-  let currentSort = 'roadmap';
-  let searchQuery = '';
-  let currentTab = 'tracker'; // tracker | roadmap | missables
+  // Shared state object owned by this module; tracker/roadmap/missables read it.
+  FF.state = {
+    data: null,
+    progress: { version: 1, earned: {} },
+    group: DEFAULT_GROUP,
+    grade: "all",
+    sort: "roadmap",
+    query: "",
+    openId: DEFAULT_OPEN_ID,
+    tab: DEFAULT_TAB
+  };
 
-  const checklistEl = document.getElementById('checklist-pane');
-  const detailEl = document.getElementById('detail-pane');
-  const railEl = document.getElementById('sources-rail');
-  const filterRowEl = document.querySelector('.filter-row');
-  const gradeFilterEl = document.getElementById('grade-filter');
-  const sortControlEl = document.getElementById('sort-control');
-  const searchInputEl = document.getElementById('search-input');
-  const spoilerToggleEl = document.getElementById('spoiler-toggle');
-  const exportBtnEl = document.getElementById('export-btn');
-  const importFileEl = document.getElementById('import-file');
+  let pendingHash = {};
 
-  // Initialize Grade Filter options if empty or basic
-  if (gradeFilterEl) {
-    gradeFilterEl.innerHTML = `
-      <option value="all">All Grades</option>
-      <option value="platinum">Platinum</option>
-      <option value="gold">Gold</option>
-      <option value="silver">Silver</option>
-      <option value="bronze">Bronze</option>
-    `;
-    gradeFilterEl.addEventListener('change', () => {
-      currentGrade = gradeFilterEl.value;
-      renderAll();
-    });
-  }
+  /* ------------------------------------------------------------------
+     Helpers
+     ------------------------------------------------------------------ */
+  const trophiesOf = () => (FF.state.data && Array.isArray(FF.state.data.trophies))
+    ? FF.state.data.trophies
+    : [];
 
-  // Initialize Sort Control options
-  if (sortControlEl) {
-    sortControlEl.innerHTML = `
-      <option value="roadmap">Sort By: Roadmap (Default)</option>
-      <option value="grade">Sort By: Grade</option>
-      <option value="name">Sort By: Name</option>
-      <option value="kind">Sort By: Kind</option>
-    `;
-    sortControlEl.addEventListener('change', () => {
-      currentSort = sortControlEl.value;
-      renderAll();
-    });
-  }
+  const validIdSet = () => trophiesOf().map(t => String(t.id));
 
-  // Search Input listener
-  if (searchInputEl) {
-    searchInputEl.addEventListener('input', () => {
-      searchQuery = searchInputEl.value;
-      renderAll();
-    });
-  }
-
-  // Spoiler Toggle listener
-  if (spoilerToggleEl) {
-    spoilerToggleEl.addEventListener('click', () => {
-      const currentMode = window.SpoilerManager.loadSpoilerMode();
-      window.SpoilerManager.saveSpoilerMode(!currentMode);
-      renderAll();
-    });
-  }
-
-  // Export Progress listener
-  if (exportBtnEl) {
-    exportBtnEl.addEventListener('click', () => {
-      window.StorageManager.exportProgress(earnedState);
-    });
-  }
-
-  // Import Progress listener
-  if (importFileEl) {
-    importFileEl.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(evt) {
-        window.StorageManager.importProgress(
-          evt.target.result,
-          (newEarnedMap) => {
-            earnedState = newEarnedMap;
-            alert('Progress imported successfully!');
-            renderAll();
-          },
-          (errMsg) => {
-            alert('Failed to import progress: ' + errMsg);
-          }
-        );
-      };
-      reader.readAsText(file);
-      importFileEl.value = ''; // reset input
-    });
-  }
-
-  // Tab Button listeners
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = btn.getAttribute('data-target');
-      if (target) {
-        currentTab = target;
-        updateURLHash();
-        renderAll();
+  const parseHash = () => {
+    const raw = window.location.hash ? window.location.hash.replace(/^#/, "") : "";
+    const out = {};
+    if (!raw) return out;
+    raw.split("&").forEach(pair => {
+      if (!pair) return;
+      const idx = pair.indexOf("=");
+      const key = idx === -1 ? pair : pair.slice(0, idx);
+      const val = idx === -1 ? "" : pair.slice(idx + 1);
+      try {
+        out[decodeURIComponent(key)] = decodeURIComponent(val.replace(/\+/g, " "));
+      } catch (e) {
+        out[key] = val;
       }
     });
-  });
+    return out;
+  };
 
-  // Fetch Data
-  try {
-    const response = await fetch('data/trophies.json');
-    const data = await response.json();
-    trophiesData = data.trophies || [];
-    sourcesRail = data.sources_rail || [];
+  const hashSeedIds = (hash) => {
+    if (!hash || !hash.seed) return [];
+    const known = new Set(validIdSet());
+    return hash.seed
+      .split(",")
+      .map(s => s.trim())
+      .filter(s => s && known.has(s));
+  };
 
-    // Apply URL hash state post-fetch (v1 bug fix regression prevention)
-    parseHashState();
-    renderAll();
+  const currentSeed = () => FF.store.earnedIds(FF.state.progress).join(",");
 
-    window.addEventListener('hashchange', () => {
-      parseHashState();
-      renderAll();
+  const updateHash = () => {
+    const params = [
+      "tab=" + encodeURIComponent(FF.state.tab),
+      "filter=" + encodeURIComponent(FF.state.group),
+      "open=" + encodeURIComponent(FF.state.openId),
+      "seed=" + encodeURIComponent(currentSeed())
+    ];
+    try {
+      history.replaceState(null, "", "#" + params.join("&"));
+    } catch (e) {
+      // file:// or restricted contexts — hash state is best-effort.
+    }
+  };
+
+  /* ------------------------------------------------------------------
+     Tab switching
+     ------------------------------------------------------------------ */
+  const showTab = (tab) => {
+    const viewId = TAB_VIEWS[tab] ? tab : DEFAULT_TAB;
+    FF.state.tab = viewId;
+
+    Object.keys(TAB_VIEWS).forEach(key => {
+      const view = document.getElementById(TAB_VIEWS[key]);
+      if (view) view.hidden = key !== viewId;
     });
-  } catch (err) {
-    console.error('Failed to load trophies.json:', err);
-  }
 
-  function renderAll() {
-    // Update Dashboard & Audit Strip
-    window.TrackerRenderer.updateDashboard(trophiesData, earnedState);
+    document.querySelectorAll(".tab").forEach(btn => {
+      const active = btn.dataset.tab === viewId;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+    });
 
-    // Switch Tab Panes visibility & Active Tab Buttons
-    const tabPanes = {
-      'tracker': document.getElementById('tracker-section'),
-      'roadmap': document.getElementById('roadmap-container'),
-      'missables': document.getElementById('missables-container')
+    renderTabView();
+  };
+
+  const renderTabView = () => {
+    if (FF.state.tab === "roadmap") {
+      if (FF.roadmap && typeof FF.roadmap.render === "function") FF.roadmap.render();
+    } else if (FF.state.tab === "missables") {
+      if (FF.missables && typeof FF.missables.render === "function") FF.missables.render();
+    }
+  };
+
+  /* ------------------------------------------------------------------
+     Render pipeline
+     ------------------------------------------------------------------ */
+  const renderAll = () => {
+    if (!FF.state.data) return;
+    FF.tracker.renderAudit();
+    FF.tracker.renderCounter();
+    FF.tracker.renderFilterRow();
+    FF.tracker.renderChecklist();
+    FF.tracker.renderDetail();
+    FF.tracker.renderRail();
+    showTab(FF.state.tab);
+  };
+
+  FF.renderAll = renderAll;
+  FF.updateHash = updateHash;
+
+  /* ------------------------------------------------------------------
+     Header actions
+     ------------------------------------------------------------------ */
+  const downloadProgress = () => {
+    const text = FF.store.exportJSON(FF.state.progress);
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "fifty-five-progress.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const importNote = (label, message) => {
+    // Minimal inline feedback on the import button label itself.
+    if (!label) return;
+    const textNode = Array.prototype.find.call(
+      label.childNodes,
+      n => n.nodeType === Node.TEXT_NODE && n.nodeValue.trim() !== ""
+    );
+    if (!textNode) return;
+    if (!label.dataset.baseLabel) label.dataset.baseLabel = textNode.nodeValue.trim();
+    textNode.nodeValue = message;
+    if (label._noteTimer) clearTimeout(label._noteTimer);
+    label._noteTimer = setTimeout(() => {
+      textNode.nodeValue = label.dataset.baseLabel;
+    }, 2600);
+  };
+
+  const importProgress = (file) => {
+    if (!file) return;
+    const label = document.querySelector(".btn-import");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = FF.store.importJSON(String(reader.result), validIdSet());
+      if (!result) {
+        importNote(label, "Import failed");
+        return;
+      }
+      FF.state.progress = result;
+      FF.store.save(FF.state.progress);
+      if (FF.updateHash) FF.updateHash();
+      renderAll();
+      importNote(label, "Imported ✓");
     };
+    reader.onerror = () => importNote(label, "Import failed");
+    reader.readAsText(file);
+  };
 
-    for (const [key, pane] of Object.entries(tabPanes)) {
-      if (pane) {
-        if (key === currentTab) {
-          pane.style.display = 'block';
-        } else {
-          pane.style.display = 'none';
-        }
-      }
-    }
-
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      const target = btn.getAttribute('data-target');
-      if (target === currentTab) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
+  /* ------------------------------------------------------------------
+     Event wiring
+     ------------------------------------------------------------------ */
+  const wireEvents = () => {
+    document.querySelectorAll(".tab").forEach(btn => {
+      btn.addEventListener("click", () => {
+        showTab(btn.dataset.tab);
+        updateHash();
+      });
     });
 
-    // Render based on active tab
-    if (currentTab === 'tracker') {
-      // Render filter buttons in filter row
-      if (filterRowEl) {
-        window.TrackerRenderer.renderFilterButtons(filterRowEl, trophiesData, currentFilter, (filterKey) => {
-          currentFilter = filterKey;
-          updateURLHash();
-          renderAll();
-        });
-      }
-
-      // Render Checklist Pane
-      window.TrackerRenderer.renderChecklist(
-        checklistEl,
-        trophiesData,
-        earnedState,
-        currentFilter,
-        currentGrade,
-        searchQuery,
-        currentSort,
-        expandedTrophyId,
-        {
-          onToggleEarned: (id) => {
-            earnedState = window.StorageManager.toggleEarned(id, earnedState);
-            renderAll();
-          },
-          onSelect: (id) => {
-            expandedTrophyId = id;
-            updateURLHash();
-            renderAll();
-          }
-        }
-      );
-
-      // Render Detail Pane
-      const selectedTrophy = trophiesData.find(t => t.id === expandedTrophyId) || trophiesData[0];
-      window.TrackerRenderer.renderDetail(detailEl, selectedTrophy, earnedState, {
-        onReveal: (id) => {
-          window.SpoilerManager.revealIndividually(id);
-          renderAll();
-        }
+    const gradeSelect = document.getElementById("grade-select");
+    if (gradeSelect) {
+      gradeSelect.value = FF.state.grade;
+      gradeSelect.addEventListener("change", () => {
+        FF.state.grade = gradeSelect.value;
+        FF.tracker.renderChecklist();
       });
-
-      // Render Sources Rail
-      window.TrackerRenderer.renderSources(railEl, sourcesRail);
-
-    } else if (currentTab === 'roadmap') {
-      const roadmapContainer = document.getElementById('roadmap-container');
-      if (roadmapContainer && window.RoadmapRenderer) {
-        window.RoadmapRenderer.render(roadmapContainer, trophiesData, earnedState, (id) => {
-          expandedTrophyId = id;
-          currentTab = 'tracker';
-          updateURLHash();
-          renderAll();
-        });
-      }
-    } else if (currentTab === 'missables') {
-      const missablesContainer = document.getElementById('missables-container');
-      if (missablesContainer && window.MissablesRenderer) {
-        window.MissablesRenderer.render(missablesContainer, trophiesData, earnedState, (id) => {
-          expandedTrophyId = id;
-          currentTab = 'tracker';
-          updateURLHash();
-          renderAll();
-        });
-      }
     }
-  }
 
-  function updateURLHash() {
-    const parts = [];
-    if (currentTab && currentTab !== 'tracker') parts.push(`tab=${currentTab}`);
-    if (currentFilter && currentFilter !== 'all') parts.push(`filter=${currentFilter}`);
-    if (expandedTrophyId) parts.push(`open=${expandedTrophyId}`);
+    const sortSelect = document.getElementById("sort-select");
+    if (sortSelect) {
+      sortSelect.value = FF.state.sort;
+      sortSelect.addEventListener("change", () => {
+        FF.state.sort = sortSelect.value;
+        FF.tracker.renderChecklist();
+      });
+    }
 
-    const seed = window.StorageManager.getSeededEarnedIds();
-    if (seed && seed.length > 0) parts.push(`seed=${seed.join(',')}`);
+    const searchInput = document.getElementById("search-input");
+    if (searchInput) {
+      searchInput.value = FF.state.query;
+      searchInput.addEventListener("input", () => {
+        FF.state.query = searchInput.value;
+        FF.tracker.renderChecklist();
+      });
+    }
 
-    const newHash = parts.length > 0 ? `#${parts.join('&')}` : '#';
-    history.replaceState(null, '', newHash);
-  }
+    const spoilerToggle = document.getElementById("spoiler-toggle");
+    if (spoilerToggle) {
+      spoilerToggle.checked = FF.spoilers.isOn();
+      spoilerToggle.addEventListener("change", () => {
+        FF.spoilers.setOn(spoilerToggle.checked);
+        renderAll();
+      });
+    }
 
-  function parseHashState() {
-    const hash = window.location.hash;
-    if (!hash || hash === '#') {
-      currentTab = 'tracker';
-      currentFilter = 'all';
+    const exportBtn = document.getElementById("export-btn");
+    if (exportBtn) exportBtn.addEventListener("click", downloadProgress);
+
+    const importFile = document.getElementById("import-file");
+    if (importFile) {
+      importFile.addEventListener("change", () => {
+        const file = importFile.files && importFile.files[0];
+        importProgress(file);
+        importFile.value = ""; // allow re-importing the same file
+      });
+    }
+  };
+
+  /* ------------------------------------------------------------------
+     Bootstrap
+     ------------------------------------------------------------------ */
+  const applyHashState = () => {
+    const hash = pendingHash;
+    const tabs = Object.keys(TAB_VIEWS);
+
+    if (hash.tab && tabs.includes(hash.tab)) FF.state.tab = hash.tab;
+    if (hash.filter && Object.prototype.hasOwnProperty.call(FF.filters.GROUPS, hash.filter)) {
+      FF.state.group = hash.filter;
+    }
+    if (hash.open && !isNaN(Number(hash.open)) && Number(hash.open) > 0) {
+      FF.state.openId = Number(hash.open);
+    }
+  };
+
+  const boot = async () => {
+    let data;
+    try {
+      const response = await fetch("data/trophies.json", { cache: "no-store" });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      data = await response.json();
+    } catch (err) {
+      FF.state.data = { trophies: [], sources_rail: [] };
+      FF.tracker.renderAudit();
+      const pane = document.getElementById("detail-pane");
+      if (pane) {
+        pane.innerHTML = '<h2 class="pane-title">Detail</h2>'
+          + '<p class="detail-empty">Could not load data/trophies.json. Serve this folder over HTTP (for example: python3 -m http.server) and reload.</p>';
+      }
       return;
     }
-    const params = new URLSearchParams(hash.replace(/^#/, ''));
 
-    const tab = params.get('tab');
-    if (tab && ['tracker', 'roadmap', 'missables'].includes(tab)) {
-      currentTab = tab;
-    } else {
-      currentTab = 'tracker';
+    // 1. Data first.
+    FF.state.data = data;
+
+    // 2. Stored progress.
+    FF.state.progress = FF.store.load();
+
+    // 3. Read the hash into pending state (do not apply yet).
+    pendingHash = parseHash();
+
+    // 4. Seed before the first render, so the whole view is stable from frame one.
+    const seedIds = hashSeedIds(pendingHash);
+    if (seedIds.length) {
+      FF.store.applySeed(FF.state.progress, seedIds);
     }
 
-    const filter = params.get('filter');
-    if (filter) {
-      currentFilter = filter;
-    } else {
-      currentFilter = 'all';
-    }
+    // 5. Spoiler mode from storage.
+    const spoilerToggle = document.getElementById("spoiler-toggle");
+    if (spoilerToggle) spoilerToggle.checked = FF.spoilers.isOn();
 
-    const openId = params.get('open');
-    if (openId) {
-      const num = Number(openId);
-      if (!isNaN(num)) expandedTrophyId = num;
-    }
-  }
-});
+    // 6. Only now apply the full hash state (tab / filter / open).
+    applyHashState();
+
+    // 7. Wire, sync the hash (earned ids in seed) and render.
+    wireEvents();
+    updateHash();
+    renderAll();
+  };
+
+  document.addEventListener("DOMContentLoaded", boot);
+})();

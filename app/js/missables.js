@@ -1,142 +1,179 @@
-/* app/js/missables.js — Missables, Cautions, and Unknowns Tab Rendering (v2) */
+window.FF = window.FF || {};
 
-window.MissablesRenderer = {
-  render: function(containerEl, trophies, earnedMap, onJumpToTrophy) {
-    if (!containerEl) return;
+/* --------------------------------------------------------------------------
+   FIFTY-FIVE v2 — Missables & Cautions view.
 
-    const pma = trophies.find(t => t.id === 28) || {};
-    const asl = trophies.find(t => t.id === 48) || {};
-    const unknowns = trophies.filter(t => t.flag === 'unknown');
+   Three honest blocks, all read from the data:
+   1. the one trophy flagged MISSABLE (Positive Mental Attitude),
+   2. the one trophy flagged CAUTION  (Actions Speak Louder),
+   3. every trophy flagged "unknown" as a small card.
+   Nothing is hard-coded except the labels: the cards are selected by flag and
+   their names, descriptions, steps and callouts come from the trophy objects.
+   -------------------------------------------------------------------------- */
 
-    let pmaStepsHTML = (pma.steps || []).map((s, i) => `
-      <div style="margin-bottom: 0.5rem; font-size: 0.9rem;">
-        <strong>Step ${i+1}:</strong> ${escapeHTML(s.text)} ${(s.cites || []).map(c => `<span class="citation-chip">[${c}]</span>`).join('')}
-      </div>
-    `).join('');
+window.FF.missables = (() => {
+  const INTRO = "One possibly missable trophy, one permanent caution, and five trophies whose requirement is not yet published. Nothing here is invented: the flags come from the cited sources.";
 
-    let aslStepsHTML = (asl.steps || []).map((s, i) => `
-      <div style="margin-bottom: 0.5rem; font-size: 0.9rem;">
-        <strong>Step ${i+1}:</strong> ${escapeHTML(s.text)} ${(s.cites || []).map(c => `<span class="citation-chip">[${c}]</span>`).join('')}
-      </div>
-    `).join('');
+  const UNKNOWN_NOTE = "Requirement not yet published by PowerPyx; this guide follows the official description only.";
 
-    let unknownsHTML = unknowns.map(t => {
-      const isEarned = window.StorageManager.isEarned(t.id, earnedMap);
-      const title = window.SpoilerManager.getDisplayTitle(t, earnedMap);
-      return `
-        <div class="unknown-card" style="background: var(--surface-color); border: 1px solid var(--surface-secondary); border-radius: var(--border-radius-lg); padding: 1rem; display: flex; flex-direction: column; justify-content: space-between;">
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-              <span class="badge-${t.grade}" style="font-size: 10px; padding: 0.15rem 0.4rem; border-radius: 3px; font-weight: bold; text-transform: uppercase;">${t.grade}</span>
-              <span style="font-size: 0.75rem; color: var(--text-muted);">Stage ${t.stage} · ${t.kind}</span>
-            </div>
-            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1rem;">#${t.id}: ${escapeHTML(title)} ${isEarned ? ' <span style="color:var(--success-color);">✓</span>' : ''}</h4>
-            <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 0.75rem 0;"><em>"${escapeHTML(t.description)}"</em></p>
-            <p style="font-size: 0.8rem; color: var(--warning-color); margin: 0; background: var(--bg-secondary); padding: 0.5rem; border-radius: var(--border-radius);">
-              Requirement not yet published by PowerPyx; guide follows the official description only.
-            </p>
-          </div>
-          <div style="margin-top: 1rem; text-align: right;">
-            <button class="button-secondary" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; cursor: pointer;" data-jump-id="${t.id}">View in Tracker →</button>
-          </div>
-        </div>
-      `;
-    }).join('');
+  const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 
-    containerEl.innerHTML = `
-      <div class="missables-container-inner" style="padding: 1.5rem; max-width: 1400px; margin: 0 auto;">
-        <div style="margin-bottom: 1.5rem; padding: 1.25rem; background: var(--surface-color); border: 1px solid var(--surface-secondary); border-radius: var(--border-radius-lg);">
-          <h2 style="color: var(--accent-color); margin-top: 0; font-size: 1.35rem;">Missables, Cautions &amp; Unreleased Requirements</h2>
-          <p style="margin: 0.5rem 0; color: var(--text-primary); font-size: 0.95rem;">
-            Official scope audit: exactly <strong>one strictly missable trophy</strong> (Chapter 1 meditation), <strong>one caution trophy</strong> (permanent Irredeemable profile), and <strong>five unreleased requirements</strong> where guides rely solely on official descriptions. Our sources record no disagreement.
-          </p>
-        </div>
+  const esc = (str) => {
+    if (typeof str !== "string") return str == null ? "" : String(str);
+    return str.replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#039;");
+  };
 
-        <!-- Positive Mental Attitude Card -->
-        <div class="missable-card" style="background: #2a2200; border: 1px solid #7a6a00; border-radius: var(--border-radius-lg); padding: 1.5rem; margin-bottom: 1.5rem;">
-          <div style="display: inline-block; background: #3d3000; color: var(--warning-color); font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.75rem; border-radius: 4px; margin-bottom: 0.75rem; text-transform: uppercase;">
-            ⚠️ POSSIBLY MISSABLE — #28 Positive Mental Attitude
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-            <h3 style="margin: 0; color: var(--text-primary); font-size: 1.2rem;">${escapeHTML(pma.name)} <span class="badge-${pma.grade}" style="font-size: 11px; padding: 0.15rem 0.4rem; border-radius: 3px;">${pma.grade}</span></h3>
-            <button class="button-primary" data-jump-id="${pma.id}">View in Tracker →</button>
-          </div>
-          <p style="color: var(--text-secondary); margin-bottom: 1rem;"><em>"${escapeHTML(pma.description)}"</em></p>
+  const trophiesOf = () => {
+    const data = FF.state && FF.state.data;
+    return (data && Array.isArray(data.trophies)) ? data.trophies : [];
+  };
 
-          <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: var(--border-radius); margin-bottom: 1rem;">
-            <h4 style="color: var(--warning-color); margin-top: 0; margin-bottom: 0.5rem;">Miss Window &amp; Critical Warning</h4>
-            <p style="margin: 0; font-size: 0.9rem; color: var(--text-primary);">
-              Chapter 1 is your sole opportunity for Jason's house meditation spot before story progression locks the area permanently. Missing it locks you out of this trophy until a new playthrough (PowerPyx / GTABase).
-            </p>
-          </div>
+  const earnedMap = () => {
+    const progress = FF.state && FF.state.progress;
+    return (progress && progress.earned) || {};
+  };
 
-          <div style="margin-bottom: 1rem;">
-            <h4 style="color: var(--text-main); margin-top: 0; margin-bottom: 0.5rem; font-size: 0.95rem;">Steps Summary</h4>
-            ${pmaStepsHTML}
-          </div>
+  const isEarned = (id) => !!earnedMap()[id];
 
-          <div class="sources-footer" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.75rem; margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
-            <strong>Sources:</strong> ${(pma.sources || []).map(s => `<span class="source-pill" style="margin-left: 0.5rem;">${escapeHTML(s)}</span>`).join('')}
-          </div>
-        </div>
+  const byFlag = (flag) => trophiesOf().filter(t => t.flag === flag);
+  const byId = (id) => trophiesOf().find(t => Number(t.id) === Number(id)) || null;
 
-        <!-- Actions Speak Louder Card -->
-        <div class="caution-card" style="background: #2b1a1a; border: 1px solid #8c3232; border-radius: var(--border-radius-lg); padding: 1.5rem; margin-bottom: 2rem;">
-          <div style="display: inline-block; background: #5c1d1d; color: #ff9999; font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.75rem; border-radius: 4px; margin-bottom: 0.75rem; text-transform: uppercase;">
-            ⚠️ CAUTION — #48 Actions Speak Louder
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-            <h3 style="margin: 0; color: var(--text-primary); font-size: 1.2rem;">${escapeHTML(asl.name)} <span class="badge-${asl.grade}" style="font-size: 11px; padding: 0.15rem 0.4rem; border-radius: 3px;">${asl.grade}</span></h3>
-            <button class="button-primary" data-jump-id="${asl.id}">View in Tracker →</button>
-          </div>
-          <p style="color: var(--text-secondary); margin-bottom: 1rem;"><em>"${escapeHTML(asl.description)}"</em></p>
-
-          <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: var(--border-radius); margin-bottom: 1rem;">
-            <h4 style="color: #ff9999; margin-top: 0; margin-bottom: 0.5rem;">Permanent Irredeemable Profile Note</h4>
-            <p style="margin: 0; font-size: 0.9rem; color: var(--text-primary);">
-              This trophy permanently modifies your career profile to 'Irredeemable Criminal'. While not missable in temporal window, it is an irreversible profile state once triggered across your save file (PowerPyx / GTABase).
-            </p>
-          </div>
-
-          <div style="margin-bottom: 1rem;">
-            <h4 style="color: var(--text-main); margin-top: 0; margin-bottom: 0.5rem; font-size: 0.95rem;">Steps Summary</h4>
-            ${aslStepsHTML}
-          </div>
-
-          <div class="sources-footer" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.75rem; margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
-            <strong>Sources:</strong> ${(asl.sources || []).map(s => `<span class="source-pill" style="margin-left: 0.5rem;">${escapeHTML(s)}</span>`).join('')}
-          </div>
-        </div>
-
-        <!-- Not Yet Known Section -->
-        <div style="margin-bottom: 1rem;">
-          <h3 style="color: var(--accent-color); font-size: 1.2rem; margin-bottom: 1rem;">Not Yet Known (5 Trophies)</h3>
-          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
-            PowerPyx and GTABase list the specific mechanics for these trophies as not yet published. Our guide follows the official description only.
-          </p>
-          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
-            ${unknownsHTML}
-          </div>
-        </div>
-      </div>
-    `;
-
-    containerEl.querySelectorAll('[data-jump-id]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = Number(btn.getAttribute('data-jump-id'));
-        if (typeof onJumpToTrophy === 'function') {
-          onJumpToTrophy(id);
-        }
-      });
+  /* The shell prints a placeholder .view-title above #missables-root; this
+     view's own <h2> replaces it, so hide the placeholder to avoid two headings.
+     Only DIRECT children are considered, so a re-render never hides our own h2. */
+  const hideShellTitle = (root) => {
+    const view = root.closest ? root.closest(".view") : null;
+    if (!view) return;
+    Array.prototype.forEach.call(view.children, child => {
+      if (child !== root && child.classList && child.classList.contains("view-title")) {
+        child.hidden = true;
+      }
     });
-  }
-};
+  };
 
-function escapeHTML(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+  const earnedMarkHTML = (trophy) => {
+    // Reuses the green .chip-earned pill (its ::after supplies the ✓).
+    return isEarned(trophy.id) ? '<span class="chip chip-earned">Earned</span>' : "";
+  };
+
+  /* FF.guides.stepListHTML emits <ol class="steps">, numbered by the big coral
+     .step-num column. Suppress the browser's own list markers here so each
+     step is numbered exactly once. */
+  const stepsHTML = (trophy) => {
+    return FF.guides.stepListHTML(trophy)
+      .replace('<ol class="steps">', '<ol class="steps" style="list-style:none;margin:0 0 12px;padding:0;">');
+  };
+
+  const calloutHTML = (trophy) => {
+    return FF.guides.calloutHTML(trophy)
+      .replace("<h3>", '<h3 class="callout-label">');
+  };
+
+  const descHTML = (trophy) => {
+    return '<p class="detail-desc">“' + esc(trophy.description) + '”</p>';
+  };
+
+  /* ------------------------------------------------------------------
+     Featured card — the MISSABLE and the CAUTION trophy.
+     ------------------------------------------------------------------ */
+  const featuredCardHTML = (trophy, badgeClass, badgeLabel, fallbackNote) => {
+    if (!trophy) {
+      return '<div class="miss-card"><p class="detail-empty">' + esc(fallbackNote) + "</p></div>";
+    }
+
+    let html = '<div class="miss-card" data-id="' + trophy.id + '">';
+
+    html += '<div class="miss-card-head">'
+      + '<span class="flag-badge ' + badgeClass + '">' + esc(badgeLabel) + "</span>"
+      + '<h3 class="miss-card-title">' + esc(trophy.name) + "</h3>"
+      + earnedMarkHTML(trophy)
+      + "</div>";
+
+    html += descHTML(trophy);
+    html += stepsHTML(trophy);
+
+    const callout = calloutHTML(trophy);
+    if (callout) html += callout;
+
+    html += "</div>";
+    return html;
+  };
+
+  /* ------------------------------------------------------------------
+     Small card — a trophy whose requirement is not yet published.
+     ------------------------------------------------------------------ */
+  const unknownCardHTML = (trophy) => {
+    let html = '<div class="miss-card" data-id="' + trophy.id + '">';
+
+    html += '<div class="miss-card-head">'
+      + '<span class="flag-badge flag-unknown">NOT YET KNOWN</span>'
+      + '<h3 class="miss-card-title">' + esc(FF.spoilers.displayName(trophy, earnedMap())) + "</h3>"
+      + earnedMarkHTML(trophy)
+      + "</div>";
+
+    html += descHTML(trophy);
+    html += '<p class="miss-note">' + esc(UNKNOWN_NOTE) + "</p>";
+    html += "</div>";
+    return html;
+  };
+
+  /* ------------------------------------------------------------------
+     Render
+     ------------------------------------------------------------------ */
+  const render = () => {
+    const root = document.getElementById("missables-root");
+    if (!root) return;
+
+    hideShellTitle(root);
+
+    if (trophiesOf().length === 0) {
+      root.innerHTML = '<p class="detail-empty">Load the trophy data to see missables and cautions.</p>';
+      return;
+    }
+
+    const missable = byFlag("MISSABLE")[0] || byId(28);
+    const caution = byFlag("CAUTION")[0] || byId(48);
+    const unknown = byFlag("unknown");
+
+    const unknownWord = NUMBER_WORDS[unknown.length] || String(unknown.length);
+    const intro = INTRO.replace(
+      "five trophies",
+      unknownWord + (unknown.length === 1 ? " trophy" : " trophies")
+    );
+
+    let html = '<h2 class="view-title">Missables &amp; cautions</h2>';
+    html += '<p class="roadmap-summary" style="margin-bottom:16px;">' + esc(intro) + "</p>";
+    html += '<div class="miss-grid">';
+    html += featuredCardHTML(
+      missable,
+      "flag-missable",
+      "POSSIBLY MISSABLE",
+      "No trophy is flagged possibly missable in the loaded data."
+    );
+    html += featuredCardHTML(
+      caution,
+      "flag-caution",
+      "CAUTION",
+      "No trophy is flagged as a caution in the loaded data."
+    );
+    html += "</div>";
+
+    if (unknown.length > 0) {
+      html += '<div class="miss-section">';
+      html += '<h3 class="miss-section-title">Not yet known — ' + unknown.length
+        + (unknown.length === 1 ? " trophy" : " trophies")
+        + " without a published requirement</h3>";
+      html += '<div class="miss-grid">';
+      unknown.forEach(t => { html += unknownCardHTML(t); });
+      html += "</div></div>";
+    }
+
+    root.innerHTML = html;
+  };
+
+  return { render };
+})();

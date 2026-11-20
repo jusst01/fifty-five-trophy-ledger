@@ -1,25 +1,25 @@
 [
   {
     "file": "1-cover.jpg",
-    "description": "Tracker 3-pane with Positive Mental Attitude (id 28) expanded at top with numbered steps, citation chips, and sources footer in frame",
+    "description": "Tracker 3-pane with Positive Mental Attitude (id 28) open: numbered steps, citation chips and sources footer in frame",
     "viewport": { "width": 1280, "height": 800 },
     "hash": "#filter=all&open=28&seed=2,3,4,5,8,9,15,17,22,30,33"
   },
   {
     "file": "2-roadmap.jpg",
-    "description": "Roadmap stage-card grid view with 8 stages and stage progress pills",
+    "description": "Roadmap stage-card grid with all 8 stages",
     "viewport": { "width": 1280, "height": 800 },
     "hash": "#tab=roadmap&seed=2,3,4,5,8,9,15,17,22,30,33"
   },
   {
     "file": "3-missables.jpg",
-    "description": "Missables and cautions view with Positive Mental Attitude, Actions Speak Louder, and Not yet known cards",
+    "description": "Missables & cautions view: Positive Mental Attitude, Actions Speak Louder and the not-yet-known cards",
     "viewport": { "width": 1280, "height": 800 },
     "hash": "#tab=missables&seed=2,3,4,5,8,9,15,17,22,30,33"
   },
   {
     "file": "4-guide.jpg",
-    "description": "Activities filter with One Last Thing (id 32) expanded at top with its numbered steps and sources footer in frame",
+    "description": "Activities filter with One Last Thing (id 32) open and its numbered steps in frame",
     "viewport": { "width": 1280, "height": 800 },
     "hash": "#filter=activities&open=32&seed=2,3,4,5,8,9,15,17,22,30,33"
   }
